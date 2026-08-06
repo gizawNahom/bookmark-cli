@@ -1,0 +1,110 @@
+# Seeded from DISCOVER wave (Scout / nw-product-discoverer), 2026-08-07
+# Status: discovery_in_progress -- NOT handoff-ready (G4 failed, see
+# docs/feature/bookmark-cli/feature-delta.md). Populate remaining journey
+# fields (emotional arc, acceptance criteria) only after G2/G4 remediation
+# and product-owner handoff.
+
+feature_id: bookmark-cli
+status: discovery_in_progress
+
+persona:
+  id: PERSONA-TERMINAL-INFRA-ENG
+  name: "Terminal-First Infra/Platform Engineer"
+  description: >
+    Senior/platform/infra/SRE/staff engineers who work primarily in the
+    terminal and curate technical reference links (docs, runbooks,
+    postmortems, Stack Overflow answers, internal wiki pages), often on
+    behalf of a team. Narrowed from the original project-brief persona
+    ("developers" generally) after Phase 1 discovery found only 50%
+    confirmation on the broad framing vs. 100% within this segment.
+  jtbd_based: true
+  not_demographic: true
+
+opportunity_statement: >
+  Terminal-first infra/platform engineers who curate and share technical
+  reference links need a way to capture, retrieve, and share those links
+  without leaving the terminal, because their current workarounds (scratch
+  files, ad hoc bash scripts, shared markdown-in-repo, Slack search) cost
+  them real weekly time and cause knowledge loss for their teams.
+
+discovered_jobs:
+  - id: JTBD-LOCATE
+    statement: >
+      Minimize the time it takes to find a previously saved technical
+      reference link by keyword or tag.
+    job_map_step: Locate
+    opportunity_score: 16
+    importance: 9
+    satisfaction: 2
+    priority: pursue
+
+  - id: JTBD-CAPTURE
+    statement: >
+      Minimize the time and context-switching it takes to save a technical
+      reference link while working in the terminal.
+    job_map_step: Execute
+    opportunity_score: 15
+    importance: 9
+    satisfaction: 3
+    priority: pursue
+
+  - id: JTBD-SHARE
+    statement: >
+      Minimize the friction of sharing a curated technical reference link
+      with a teammate without requiring the recipient to install anything.
+    job_map_step: Conclude
+    opportunity_score: 14
+    importance: 8
+    satisfaction: 2
+    priority: pursue
+
+  - id: JTBD-CONTEXT-SWITCH
+    statement: >
+      Minimize the cost of switching between terminal and browser when
+      referencing saved docs.
+    job_map_step: Execute (cross-cutting)
+    opportunity_score: 13
+    importance: 8
+    satisfaction: 3
+    priority: evaluate_later
+
+  - id: JTBD-ORGANIZE
+    statement: >
+      Minimize the effort to organize/tag links into meaningful categories.
+    job_map_step: Prepare
+    opportunity_score: 11
+    importance: 7
+    satisfaction: 3
+    priority: evaluate_later
+
+  - id: JTBD-RECALL-CONTEXT
+    statement: >
+      Minimize the time to recall why a link was saved.
+    job_map_step: Confirm
+    opportunity_score: 9
+    importance: 6
+    satisfaction: 3
+    priority: backlog
+
+  - id: JTBD-DEDUP-MONITOR
+    statement: >
+      Minimize the likelihood of duplicate/stale links accumulating.
+    job_map_step: Monitor
+    opportunity_score: 6
+    importance: 5
+    satisfaction: 4
+    priority: deprioritize
+
+gate_status:
+  G1_problem_to_opportunity: pass_with_pivot
+  G2_opportunity_to_solution: conditional_pass  # cross-functional alignment session outstanding
+  G3_solution_to_viability: pass
+  G4_viability_to_build: fail  # feasibility + channel/viability risks unaddressed
+
+handoff_ready: false
+handoff_blockers:
+  - "G2: no real cross-functional (PM+Design+Eng) opportunity alignment session held"
+  - "G4: no engineering feasibility spike run"
+  - "G4: no channel/viability (fake-door / distribution) test run"
+
+evidence_source: docs/feature/bookmark-cli/feature-delta.md
