@@ -479,3 +479,99 @@ treats "no server infrastructure" as a working assumption, not a verified
 constraint. The G2 cross-functional alignment gap is carried forward
 unresolved for the same reason: the user's override covered both G2 and G4
 explicitly, and no new alignment session was held during DISCUSS.
+
+---
+
+## Wave: DESIGN
+
+Facilitator: Morgan (nw-solution-architect) | Date: 2026-08-07
+Interaction mode: Propose | Density mode: lean/ask-intelligent
+
+### [REF] Design Decisions (DDD List with Verdicts)
+
+| # | Decision | Verdict |
+|---|---|---|
+| D1 | Feasibility of "local-first, no server infrastructure" (carried-forward unverified assumption from DISCOVER/DISCUSS) | **CONFIRMED at design level** — no component in the architecture requires network calls or server infrastructure. Channel/viability risk remains separately open (business/DEVOPS concern, not engineering feasibility). See `brief.md` Section 0. |
+| D2 | Language/runtime | Go (ADR-001) — **CONFIRMED FINAL by user (2026-08-07)**, was explicitly undecided entering this wave |
+| D3 | Storage format | SQLite, WAL mode, FTS5, pure-Go driver (ADR-002) |
+| D4 | CLI framework | Cobra (ADR-003) |
+| D5 | Concurrency/atomicity mechanism | SQLite WAL + busy_timeout (ADR-004) |
+| D6 | Backup/recovery strategy | Automatic rotating snapshots + documented manual fallback (ADR-005) |
+| D7 | Effect isolation approach | Functional core / imperative shell + Plan-value pattern for save/dedup flow (ADR-006) |
+| D8 | Adapter trust mechanism | Probe() contract + 3-layer enforcement (subtype/structural/behavioral) (ADR-007) |
+| D9 | Architecture pattern | Modular monolith, hexagonal ports-and-adapters — microservices/event-sourcing/CQRS explicitly rejected as disproportionate |
+| D10 | Resource scaling target | Responsive up to 10,000 bookmarks (newly set — outcome-kpis.md's <10s target had no stated ceiling) |
+| D11 | Accessibility rule | No ANSI-color-only status indicators; text prefix required on every status/error line |
+
+### [REF] Component Decomposition Table
+
+See `docs/product/architecture/brief.md` Section 5 for the full contract-shape classification
+table (12 components: 5 pure-function core components, 3 ports, 2 adapters, 3 command
+orchestrators).
+
+### [REF] Driving Ports (Inbound Surface)
+
+`bm save`, `bm find`, `bm share` — see `brief.md` Section 13. No other inbound surface exists.
+
+### [REF] Driven Ports + Adapters
+
+`BookmarkReader`/`BookmarkWriter` → `SQLiteBookmarkStore`; `BackupService` →
+`FileBackupAdapter`. See `brief.md` Section 14. Read/write ports are split per Core Principle 12
+— `BookmarkReader` has no write methods.
+
+### [REF] Technology Choices
+
+Go + Cobra + SQLite (modernc.org/sqlite, WAL, FTS5) + go-arch-lint (package-boundary
+enforcement). All OSS (BSD-3/MIT), documented in ADR-001 through ADR-003 with alternatives and
+license notes.
+
+### [REF] Reuse Analysis
+
+N/A — greenfield, no `src/` exists. Full CREATE NEW table in `brief.md` Section 15.
+
+### [REF] Open Questions Deferred to DISTILL/DELIVER
+
+1. `bm restore` command mechanics (deferred, manual copy suffices for MVP).
+2. FTS5 tokenizer/ranking tuning for fuzzy "did you mean" tag suggestion.
+3. Flag-level "did you mean --tag?" correction implementation (Cobra gives command-level
+   suggestions natively only).
+4. Paradigm write-back to `CLAUDE.md` — content finalized, but the write is held pending
+   *direct* user confirmation (an intermediate agent-relayed message is not sufficient
+   authorization for a CLAUDE.md/config change per this agent's standing rules). Not written yet.
+
+### [REF] External Integrations
+
+None. No contract-testing annotation needed for platform-architect handoff.
+
+### [WHY] Why Go Over Rust/Python (high-stakes, previously-undecided choice)
+
+Trigger: language/runtime was explicitly flagged as not yet decided entering this session, and
+is a high-switching-cost choice — warrants inline reasoning even under lean density. Full
+trade-off table and reasoning in `brief.md` Section 3.1 and ADR-001. Summary: Python's
+interpreter/import startup latency (30-80ms) competes directly against the <100ms
+perceived-save-confirmation budget, and its runtime-dependency install model conflicts with the
+persona's demonstrated zero-install expectation (same value that drove the `bm share`
+zero-install hard guardrail). Rust is viable on performance but its steeper learning curve is an
+unoffset solo-maintainer velocity risk for a scope this size. Go meets the latency budget,
+matches the persona's existing static-binary tooling expectations (kubectl/docker/terraform),
+and has the lowest learning-curve risk of the two performance-viable options.
+
+### [REF] Peer Review Outcome
+
+`nw-solution-architect-reviewer` iteration 1: `conditionally_approved` (0 critical, 1 high, 1
+medium). Both resolved in the same iteration: (1) HIGH — effort estimate revised, +2-3 days
+flagged for the Earned Trust enforcement machinery (AST structural check + fault-injection CI
+harness), not covered by DISCUSS's original 6-7 day story-map figure; (2) MEDIUM — Security
+quality attribute added to `brief.md` Section 1 (filesystem-permissions-sufficient rationale for
+a local-first, zero-network, zero-multi-tenant tool). Full review proof in
+`docs/feature/bookmark-cli/design/wave-decisions.md` "Peer Review Status."
+
+### [REF] DESIGN Wave Handoff Status
+
+**COMMIT-ready / handoff-ready to DEVOPS (nw-platform-architect).** Language/runtime (Go)
+confirmed final by the user; all quality gates passed (full checklist in
+`docs/feature/bookmark-cli/design/wave-decisions.md` "Handoff to DEVOPS" section). One item
+remains open outside this architecture handoff's critical path: the `CLAUDE.md` paradigm
+write-back is finalized in content but not yet persisted, pending direct user confirmation
+(not satisfiable via an agent-relayed approval claim per this agent's standing rules) — tracked
+as open item 4 above, does not block the DEVOPS handoff.
