@@ -1,11 +1,14 @@
 # Seeded from DISCOVER wave (Scout / nw-product-discoverer), 2026-08-07
-# Status: discovery_in_progress -- NOT handoff-ready (G4 failed, see
-# docs/feature/bookmark-cli/feature-delta.md). Populate remaining journey
-# fields (emotional arc, acceptance criteria) only after G2/G4 remediation
-# and product-owner handoff.
+# Populated in DISCUSS wave (Luna / nw-product-owner), 2026-08-07.
+# NOTE: DISCOVER's G4 FAIL / G2 CONDITIONAL PASS were not remediated before
+# this population -- the PO accepted this as an explicit, user-approved risk
+# and proceeded. See docs/feature/bookmark-cli/discuss/wave-decisions.md
+# ("Upstream Changes / Gate Override") for the full quoted verdicts,
+# decision, and rationale. Do not treat the fields below as evidence that
+# G2/G4 were closed -- they were deliberately carried forward as risk.
 
 feature_id: bookmark-cli
-status: discovery_in_progress
+status: discuss_complete
 
 persona:
   id: PERSONA-TERMINAL-INFRA-ENG
@@ -108,3 +111,43 @@ handoff_blockers:
   - "G4: no channel/viability (fake-door / distribution) test run"
 
 evidence_source: docs/feature/bookmark-cli/feature-delta.md
+
+# --- Populated in DISCUSS wave ---
+
+detailed_journey:
+  visual: docs/feature/bookmark-cli/discuss/journey-save-find-share-visual.md
+  schema: docs/feature/bookmark-cli/discuss/journey-save-find-share.yaml
+  shared_artifacts_registry: docs/feature/bookmark-cli/discuss/shared-artifacts-registry.md
+
+scope_this_pass:
+  jobs_in_scope: [JTBD-CAPTURE, JTBD-LOCATE, JTBD-SHARE]
+  jobs_out_of_scope_backlog: [JTBD-CONTEXT-SWITCH, JTBD-ORGANIZE, JTBD-RECALL-CONTEXT, JTBD-DEDUP-MONITOR]
+
+emotional_arc:
+  start: "Focused, mid-task, mildly anxious about losing the link if not captured now"
+  middle: "Anxious/time-pressured while searching (often mid-incident), resolving to confident once a match appears"
+  end: "Proud/relieved once the teammate confirms zero-install receipt"
+
+acceptance_criteria_summary:
+  # Full Given/When/Then + AC checklists live in
+  # docs/feature/bookmark-cli/discuss/user-stories.md (US-01 through US-06).
+  - story: US-01
+    title: "Save a link without leaving the terminal"
+    job_id: JTBD-CAPTURE
+  - story: US-02
+    title: "Locate a saved link by keyword or tag"
+    job_id: JTBD-LOCATE
+  - story: US-03
+    title: "Share a curated link with a teammate, zero install"
+    job_id: JTBD-SHARE
+  - story: US-04
+    title: "Discover the tag flag syntax without a failed attempt"
+    job_id: JTBD-CAPTURE
+  - story: US-05
+    title: "Get a helpful error when saving an invalid or duplicate URL"
+    job_id: JTBD-CAPTURE
+  - story: US-06
+    title: "Get a helpful no-results experience when find has no matches"
+    job_id: JTBD-LOCATE
+
+discuss_handoff_ready: true

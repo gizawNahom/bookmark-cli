@@ -412,3 +412,70 @@ Marco: I'd stop DMing people to avoid searching, honestly. That's the real tell 
 overhead over my own broken tool.
 
 ---
+
+## Wave: DISCUSS
+
+Facilitator: Luna (nw-product-owner) | Date: 2026-08-07
+Density mode: lean/ask-intelligent — Tier-1 REF sections always emitted;
+Tier-2 WHY/HOW emitted only where a trigger fired (see below).
+
+### [REF] Gate Override Applied
+
+DISCOVER's G4 (Viability → Build) FAIL and G2 (Opportunity → Solution)
+CONDITIONAL PASS were not remediated. The PO, with explicit user sign-off,
+accepted this as a risk and proceeded to DISCUSS. Full quoted verdicts,
+decision, and rationale are recorded in
+`docs/feature/bookmark-cli/discuss/wave-decisions.md` under
+"Upstream Changes (Gate Override — Back-Propagation)" — not duplicated here
+to keep a single source of truth for this decision.
+
+### [REF] Scope for This Wave
+
+In scope: top-3 DISCOVER "pursue" opportunities — JTBD-CAPTURE, JTBD-LOCATE,
+JTBD-SHARE (`bm save`, `bm find`, `bm share`).
+Out of scope (backlog): JTBD-CONTEXT-SWITCH, JTBD-ORGANIZE,
+JTBD-RECALL-CONTEXT, JTBD-DEDUP-MONITOR — see
+`docs/feature/bookmark-cli/discuss/wave-decisions.md` Out-of-Scope section.
+
+### [REF] Jobs Formalized
+
+DISCOVER's 7 scored jobs formalized into job-story + four-forces format at
+`docs/product/jobs.yaml`. No re-interviewing performed — this wave built on
+existing DISCOVER evidence per the skill's instruction to skip re-running
+JTBD when jobs are already scored.
+
+### [REF] Journey Produced
+
+`docs/feature/bookmark-cli/discuss/journey-save-find-share.yaml` and
+`journey-save-find-share-visual.md` — 3-step journey (Capture → Locate →
+Share) with emotional arc, shared artifacts (`bookmark_id`, `tag`,
+`match_list`, `share_snippet`), and integration checkpoints. SSOT journey
+seed `docs/product/journeys/bookmark-cli.yaml` updated to
+`status: discuss_complete` with emotional arc and AC references populated.
+
+### [REF] Story Map and Stories
+
+`docs/feature/bookmark-cli/discuss/story-map.md` — walking skeleton (US-01,
+US-02, US-03) + Release 1 (US-04, US-05, US-06). Full LeanUX stories with
+UAT scenarios, AC, and outcome KPIs in
+`docs/feature/bookmark-cli/discuss/user-stories.md`. Scope Assessment: PASS
+(6 stories, 1 bounded context, ~6-7 days estimated).
+
+### [WHY] Why the Gate Override Was Accepted Rather Than Remediated
+
+Trigger: a cross-wave gate override is an inherently high-stakes,
+non-default decision — Tier-2 justification is warranted even under lean
+density mode.
+
+The two unresolved DISCOVER risks were: (1) no engineering feasibility spike
+on local storage + share mechanism, and (2) no fake-door/channel viability
+test. The user's stated rationale for accepting rather than remediating:
+these are "well-understood, low-risk technical patterns" for this scope
+(local file storage, copy-paste sharing), making a formal spike
+disproportionate to the risk. This is judgment-call risk acceptance, not
+evidence that the risk doesn't exist — it remains flagged for DESIGN wave
+in `wave-decisions.md`'s Handoff Package section so solution-architect
+treats "no server infrastructure" as a working assumption, not a verified
+constraint. The G2 cross-functional alignment gap is carried forward
+unresolved for the same reason: the user's override covered both G2 and G4
+explicitly, and no new alignment session was held during DISCUSS.

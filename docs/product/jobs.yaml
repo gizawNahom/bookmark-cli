@@ -1,0 +1,134 @@
+# Jobs-to-be-Done SSOT — bookmark-cli
+# Formalized in DISCUSS wave (Luna / nw-product-owner) from the 7 jobs scored
+# during DISCOVER (Scout / nw-product-discoverer). Not re-interviewed — this
+# formalizes the existing DISCOVER evidence into job-story + four-forces
+# format per nw-jtbd-bdd-integration. Evidence source for all jobs below:
+# docs/feature/bookmark-cli/discover/wave-decisions.md and
+# docs/feature/bookmark-cli/feature-delta.md (transcripts #1-#11).
+
+schema_version: 1
+last_updated: "2026-08-07"
+persona:
+  id: PERSONA-TERMINAL-INFRA-ENG
+  name: "Terminal-First Infra/Platform Engineer"
+
+jobs:
+  - id: JTBD-CAPTURE
+    statement: >
+      Minimize the time and context-switching it takes to save a technical
+      reference link while working in the terminal.
+    job_story: >
+      When I'm heads-down in a terminal session (often mid-incident or
+      mid-debug) and find a technical reference worth keeping, I want to save
+      it with a single command without leaving my shell, so I can get back to
+      what I was doing without breaking flow.
+    job_map_step: Execute
+    opportunity_score: 15
+    importance: 9
+    satisfaction: 3
+    priority: pursue
+    scope_status: in_scope_mvp
+    forces:
+      push: "Alt-tabbing to a GUI app or browser mid-incident breaks flow (Sam, transcript #4)."
+      pull: "One command, still in tmux, link is saved and I move on."
+      anxiety: "What if I mistype a tag and now have two inconsistent tags forever? (Nadia, transcript #6)"
+      habit: "Already has a personal bash function (`save-link`) that appends to a text file (Nadia, transcript #6); a personal git-repo markdown file (Sam, transcript #4; Marco, transcript #11)."
+    evidence_refs: ["transcript #1 Priya", "transcript #4 Sam", "transcript #6 Nadia", "transcript #11 Marco"]
+
+  - id: JTBD-LOCATE
+    statement: >
+      Minimize the time it takes to find a previously saved technical
+      reference link by keyword or tag.
+    job_story: >
+      When I know I've saved a link before but can't remember where or under
+      what word, I want to search my saved links by keyword or tag from the
+      terminal, so I can retrieve it in seconds instead of re-Googling or
+      interrupting a teammate.
+    job_map_step: Locate
+    opportunity_score: 16
+    importance: 9
+    satisfaction: 2
+    priority: pursue
+    scope_status: in_scope_mvp
+    forces:
+      push: "Spent 15 minutes grepping Slack DMs to self for a link known to exist (Priya, transcript #1); 4-minute delay to find the right runbook link mid-incident (Priti, transcript #10)."
+      pull: "Grep-like search from muscle memory, but structured and reliable (Priti, transcript #10)."
+      anxiety: "Search returns nothing or the wrong thing when it matters most (mid-incident)."
+      habit: "Currently uses `grep -i` against a flat text file (Priti, transcript #10); browser bookmarks folder with 40+ unsorted links (Jordan, transcript #9)."
+    evidence_refs: ["transcript #1 Priya", "transcript #9 Jordan", "transcript #10 Priti"]
+
+  - id: JTBD-SHARE
+    statement: >
+      Minimize the friction of sharing a curated technical reference link
+      with a teammate without requiring the recipient to install anything.
+    job_story: >
+      When I've found a link worth sharing with my team, I want to hand it
+      off in a form any teammate can immediately use with zero install, so
+      curated knowledge doesn't get lost in merge-conflicted files or stale
+      wiki pages.
+    job_map_step: Conclude
+    opportunity_score: 14
+    importance: 8
+    satisfaction: 2
+    priority: pursue
+    scope_status: in_scope_mvp
+    forces:
+      push: "Weekly merge conflicts on a shared LINKS.md file; links go stale for months with no ownership signal (Aisha, transcript #8)."
+      pull: "One command produces something any teammate can use immediately, no tool required on their end."
+      anxiety: "\"If it's not one-command for my teammates I already lost\" (Aisha, transcript #8) — recipient friction kills adoption."
+      habit: "Currently pastes into Slack or a shared markdown-in-repo file (Aisha, transcript #8)."
+    evidence_refs: ["transcript #8 Aisha"]
+
+  - id: JTBD-CONTEXT-SWITCH
+    statement: >
+      Minimize the cost of switching between terminal and browser when
+      referencing saved docs.
+    job_map_step: Execute (cross-cutting)
+    opportunity_score: 13
+    importance: 8
+    satisfaction: 3
+    priority: evaluate_later
+    scope_status: out_of_scope_backlog
+    evidence_refs: ["Phase 2 opportunity scoring"]
+
+  - id: JTBD-ORGANIZE
+    statement: >
+      Minimize the effort to organize/tag links into meaningful categories.
+    job_map_step: Prepare
+    opportunity_score: 11
+    importance: 7
+    satisfaction: 3
+    priority: evaluate_later
+    scope_status: out_of_scope_backlog
+    evidence_refs: ["Phase 2 opportunity scoring"]
+
+  - id: JTBD-RECALL-CONTEXT
+    statement: >
+      Minimize the time to recall why a link was saved.
+    job_map_step: Confirm
+    opportunity_score: 9
+    importance: 6
+    satisfaction: 3
+    priority: backlog
+    scope_status: out_of_scope_backlog
+    evidence_refs: ["Phase 2 opportunity scoring"]
+
+  - id: JTBD-DEDUP-MONITOR
+    statement: >
+      Minimize the likelihood of duplicate/stale links accumulating.
+    job_map_step: Monitor
+    opportunity_score: 6
+    importance: 5
+    satisfaction: 4
+    priority: deprioritize
+    scope_status: out_of_scope_backlog
+    evidence_refs: ["Phase 2 opportunity scoring"]
+
+changelog:
+  - date: "2026-08-07"
+    feature: bookmark-cli
+    change: >
+      Created SSOT from DISCOVER-wave scored jobs. Formalized top-3 pursue
+      jobs (JTBD-CAPTURE, JTBD-LOCATE, JTBD-SHARE) into job-story + four-forces
+      format for DISCUSS-wave story traceability. Remaining 4 jobs carried
+      forward as out-of-scope backlog, unchanged from DISCOVER scoring.
