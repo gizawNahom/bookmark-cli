@@ -1,0 +1,56 @@
+# environments.yaml — consumed by DISTILL for Mandate 4 (Environmental Realism)
+# feature-id: bookmark-cli
+# Facilitator: Apex (nw-platform-architect) | DEVOPS wave | 2026-08-07
+#
+# Judgment call (per nw-devops SKILL.md "features that do NOT install into
+# systems"): `bm` is a single static Go binary with no hooks, no daemon, no
+# watch mode, and no shell-integration side effects (brief.md Section 13 —
+# only inbound surface is 3 CLI commands). It does not modify other tools'
+# state (no git hooks, no shell rc file edits, no OS service registration).
+# Distribution (Homebrew tap / GitHub release binary / `go install`) is
+# itself out of scope for this matrix — install correctness is a packaging
+# concern, not a per-command behavioral one. Therefore this matrix is
+# deliberately minimal: a clean-install matrix across the 3 platforms the
+# persona actually uses (brief.md Section 1 "Ecosystem fit" — kubectl/
+# docker/terraform-adjacent toolchain, meaning Linux/macOS/WSL2 terminals),
+# plus one state-carrying variant (existing local SQLite store) since that
+# is the one piece of state `bm` DOES own and must behave correctly around.
+
+target_environments:
+  - name: clean
+    description: "Fresh install, no prior ${data_dir} state, no config file"
+    platform: [linux, macos, wsl]
+    preconditions: []
+
+  - name: existing-store
+    description: "${data_dir}/bookmarks.db already present with prior records (repeat-run realism for save/find/share against non-empty state)"
+    platform: [linux, macos, wsl]
+    preconditions: ["bookmarks.db present with >0 records", "WAL mode already engaged from prior run"]
+
+  - name: degraded-filesystem
+    description: "Read-only or network/overlay filesystem for ${data_dir} — exercises the Probe() fault-injection contract (ADR-007) at startup rather than a silent partial write"
+    platform: [linux, wsl]
+    preconditions: ["${data_dir} mounted read-only, or WAL-unsupported filesystem (e.g. WSL2 DrvFs, some overlayfs/network mounts)"]
+
+coexistence_matrix:
+  # No hooks, no daemon, no shell-rc mutation, no other tool whose state `bm`
+  # could disturb — the coexistence concern this project actually has is the
+  # opposite direction: `bm`'s OWN local dev tooling (pre-commit hooks,
+  # go-arch-lint) must not conflict with a user's pre-existing dotfiles/hook
+  # managers, but that is a repo-local dev concern, not an end-user
+  # coexistence concern. Listed as explicitly N/A rather than omitted.
+  - tool: N/A
+    must_not_break: false
+    note: "bm has no daemon, no hooks, no shell-rc mutation, and no shared external state with other tools. Nothing to enumerate here beyond the entries above; recorded explicitly so the empty matrix isn't mistaken for an oversight."
+
+platform_coverage:
+  macOS: [13.x, 14.x, 15.x]
+  Linux: [Ubuntu 22.04, Ubuntu 24.04]
+  WSL: [WSL2]
+  CI: [GitHub Actions ubuntu-latest, macos-latest]
+
+deployment_assumptions:
+  - "Installation MUST be idempotent (re-running `brew install`/`go install` or re-downloading the release binary is safe; no in-place state migration triggered by install itself)"
+  - "Uninstall MUST remove only the `bm` binary (via `brew uninstall`/manual deletion) — ${data_dir} (bookmark store + backups) is user data, not an install artifact, and is explicitly NOT deleted by uninstall; documented in README per brief.md Section 8"
+  - "No hooks, daemons, or background processes are installed — nothing to coexist with or clean up beyond the binary itself"
+  - "Every driven adapter's Probe() (ADR-007) MUST refuse the operation with `health.startup.refused` rather than attempt a write when the degraded-filesystem environment is encountered — this is the environmental-realism contract this matrix exists to validate in DISTILL acceptance scenarios"

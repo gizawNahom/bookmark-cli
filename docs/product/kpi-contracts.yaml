@@ -1,0 +1,91 @@
+# kpi-contracts.yaml — SSOT for KPI instrumentation deltas
+# Created by: Apex (nw-platform-architect), DEVOPS wave, 2026-08-07
+# Purpose: per-KPI data collection contract (event names, log fields,
+# measurement window) so DISTILL/DELIVER implement instrumentation that
+# matches exactly what DISCUSS's outcome-kpis.md committed to measuring.
+# Source KPI definitions: docs/feature/bookmark-cli/discuss/outcome-kpis.md
+
+features:
+  bookmark-cli:
+    telemetry_model: "local opt-in event log — no server, no data leaves the machine"
+    opt_in_mechanism:
+      default: false
+      config_key: "telemetry_enabled"
+      config_location: "${config_dir}/bm/config.toml"
+      prompt: "First-run prompt (or `bm config set telemetry.enabled true`) — opt-in only, never opt-out-by-default"
+    storage:
+      port: "UsageLogger (new driven port)"
+      adapter_enabled: "FileUsageLogAdapter — bounded to ${data_dir}/usage.log only, append-only JSONL"
+      adapter_disabled: "NoOpUsageLogAdapter — used when telemetry_enabled=false; command handlers call UsageLogger.Record() unconditionally, adapter selection happens once at composition root"
+      probe_contract: "FileUsageLogAdapter implements Probe() error per ADR-007 pattern (log directory writable check) — enforced by the same 3-layer (subtype/structural/behavioral) tooling as existing adapters"
+      privacy_note: "Event payloads never include URL or tag content — only event name, timestamp, and small enumerated outcome fields. User can delete usage.log at any time; nothing is recoverable elsewhere since no copy leaves the machine."
+
+    kpis:
+      - id: KPI-1
+        name: "Save adoption rate"
+        type: "Leading"
+        outcome_kpi_ref: "outcome-kpis.md row 1"
+        event_names: ["bm.save"]
+        log_fields:
+          - {field: "event", value: "bm.save"}
+          - {field: "ts", value: "RFC3339 timestamp"}
+          - {field: "outcome", value: "enum: new | duplicate | tag_update (from SavePlan)"}
+        measurement_window: "Weekly during pilot (2-week adoption target)"
+        aggregation: "`bm stats` command counts bm.save events per week from usage.log; compared against pilot self-report of workaround usage (Slack/text-file) collected out-of-band by product-owner"
+        dashboard: "Local weekly summary table via `bm stats --since 7d`; pilot facilitator compiles across pilot users manually (no central server to aggregate automatically — by design, per local-first architecture)"
+        alerting: "None (local, pilot-scale) — product-owner reviews weekly self-report against `bm stats` output"
+
+      - id: NORTH-STAR
+        name: "Weekly active bm find invocations"
+        type: "North Star"
+        outcome_kpi_ref: "outcome-kpis.md Metric Hierarchy"
+        event_names: ["bm.find"]
+        log_fields:
+          - {field: "event", value: "bm.find"}
+          - {field: "ts", value: "RFC3339 timestamp"}
+          - {field: "result_count", value: "integer, number of ranked matches returned"}
+        measurement_window: "Weekly, ongoing through pilot cycle"
+        aggregation: "`bm stats` counts distinct bm.find invocations per week"
+        dashboard: "Same local `bm stats` summary; this is the primary retrieval-habit signal"
+        alerting: "None (local, pilot-scale)"
+
+      - id: KPI-2
+        name: "Time-to-locate"
+        type: "Leading"
+        outcome_kpi_ref: "outcome-kpis.md row 2"
+        event_names: []
+        log_fields: []
+        measurement_window: "Weekly during pilot"
+        aggregation: "NOT code-instrumented — primary source is stopwatch task-timing + weekly self-report during pilot observation sessions (product-owner owned). bm.find event timestamps MAY be used as an auxiliary cross-check of session frequency but are not the primary measurement."
+        dashboard: "N/A — pilot observation artifact, not a `bm stats` output"
+        alerting: "None"
+
+      - id: KPI-3
+        name: "Zero-install share compliance"
+        type: "Leading (guardrail)"
+        outcome_kpi_ref: "outcome-kpis.md row 3"
+        event_names: ["bm.share"]
+        log_fields:
+          - {field: "event", value: "bm.share"}
+          - {field: "ts", value: "RFC3339 timestamp"}
+        measurement_window: "Per share event during pilot"
+        aggregation: "bm.share event count is an auxiliary usage signal only (confirms feature is used); the actual guardrail (recipient needed zero install) is measured entirely by pilot observation/direct confirmation, not by code — no code-level signal can observe the recipient's environment."
+        dashboard: "N/A — pilot observation artifact"
+        alerting: "None; regression on this guardrail is a manual pilot-observation finding, escalated by product-owner"
+
+      - id: KPI-4
+        name: "Tag-flag comprehension time"
+        type: "Leading (guardrail)"
+        outcome_kpi_ref: "outcome-kpis.md row 4"
+        event_names: []
+        log_fields: []
+        measurement_window: "Once, before Release 1 ships"
+        aggregation: "NOT code-instrumented — usability re-test (stopwatch task-timing), same protocol as DISCOVER Phase 3. No local-log signal applies."
+        dashboard: "N/A"
+        alerting: "None"
+
+    new_driving_port:
+      command: "bm stats"
+      description: "Read-only local aggregation command. Parses ${data_dir}/usage.log (JSONL) and prints a weekly summary (save/find/share counts). Pure aggregation function in the functional core (parses log lines -> Summary value), thin imperative shell for file read + terminal print — consistent with the project's functional-core/imperative-shell paradigm (CLAUDE.md)."
+      contract_shape: "pure-read (no mutation of usage.log or the bookmark store)"
+      behavior_if_telemetry_disabled: "Prints a message indicating telemetry is not enabled and no local usage data exists, with the opt-in command to enable it — never fabricates data or errors ambiguously"

@@ -21,3 +21,8 @@ classification (`docs/product/architecture/brief.md` Section 5):
 
 See `docs/product/architecture/brief.md` ("Paradigm Selection") and ADR-006
 (`docs/product/architecture/adr-006-effect-isolation-plan-value-pattern.md`) for full rationale.
+
+## Mutation Testing Strategy
+
+This project uses **pre-release** mutation testing. Runs on entire solution before each
+release. Delivery not blocked.

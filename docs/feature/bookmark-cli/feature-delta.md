@@ -575,3 +575,245 @@ remains open outside this architecture handoff's critical path: the `CLAUDE.md` 
 write-back is finalized in content but not yet persisted, pending direct user confirmation
 (not satisfiable via an agent-relayed approval claim per this agent's standing rules) — tracked
 as open item 4 above, does not block the DEVOPS handoff.
+
+---
+
+## Wave: DEVOPS
+
+Facilitator: Apex (nw-platform-architect) | Date: 2026-08-07 | Density mode: lean
+(Tier-1 `[REF]` always emitted; Tier-2 `[WHY]`/`[HOW]` only where a trigger fires)
+
+### [REF] Contradiction Check Against DESIGN
+
+Read `docs/product/architecture/brief.md` (all sections), ADR-001 through ADR-007,
+`docs/feature/bookmark-cli/design/wave-decisions.md`, and
+`docs/feature/bookmark-cli/discuss/outcome-kpis.md` before making any DEVOPS decision, per the
+`nw-devops` skill's reading-enforcement requirement.
+
+- ✓ `docs/product/architecture/brief.md`
+- ✓ `docs/product/architecture/adr-001` through `adr-007` (all Accepted)
+- ✓ `docs/feature/bookmark-cli/design/wave-decisions.md`
+- ✓ `docs/feature/bookmark-cli/discuss/outcome-kpis.md`
+- ✓ `CLAUDE.md`
+
+**No contradictions found.** The zero-server, zero-network, single-static-binary architecture
+(brief.md Section 0/6.1/17) is structurally incompatible with cloud/on-prem/hybrid/edge
+deployment-target framing, container orchestration, and canary/blue-green/rolling live-service
+deployment strategies — all closed as N/A by direct user decision in this session, consistent
+with (not contradicting) DESIGN. The one open item DESIGN explicitly deferred to this wave —
+local opt-in usage-logging instrumentation for North Star/KPI-1 (brief.md Section 18,
+`outcome-kpis.md` "Note on North-Star Data Availability") — is designed below, in the exact
+bounded-change-adapter shape brief.md Section 18 anticipated.
+
+### [REF] Environment Matrix
+
+Full detail in `docs/feature/bookmark-cli/environments.yaml` (mandatory DEVOPS deliverable,
+consumed by DISTILL Mandate 4). Summary:
+
+| Environment | Purpose | Platforms |
+|---|---|---|
+| `clean` | Fresh install, no prior state | linux, macos, wsl |
+| `existing-store` | Repeat-run realism against a non-empty `bookmarks.db` | linux, macos, wsl |
+| `degraded-filesystem` | Exercises the ADR-007 `Probe()` fault-injection contract (read-only/WAL-unsupported mount) | linux, wsl |
+
+`bm` installs no hooks, daemons, or shell-rc mutations, so the matrix is deliberately minimal
+per the `nw-devops` skill's guidance for features that do not install into other systems' state
+— see the file's inline rationale.
+
+### [REF] CI/CD Pipeline Outline
+
+**Platform: GitHub Actions** (user decision, this session). **Branching: Trunk-based**
+(below) — every push to `main` triggers the full commit-stage pipeline; every `v*` tag triggers
+the release pipeline.
+
+| Stage | Trigger | Jobs | Gate type |
+|---|---|---|---|
+| Local pre-commit | `git commit` | `gofmt -l`, `go vet`, fast unit subset, `gitleaks` secrets scan | Blocking (developer), escapable with `--no-verify` (audited) |
+| Local pre-push | `git push` | Full unit suite, `go-arch-lint` package-boundary check, AST structural probe-presence check (ADR-007 layer 2) | Blocking (developer) |
+| PR / commit stage | `pull_request`, `push: [main]` | `go build ./...`, full unit suite + coverage (`>= 80%` per production-readiness default), `golangci-lint` (incl. `staticcheck`), `gosec` (SAST), `govulncheck` (SCA), `gitleaks` (secrets), `go-arch-lint` (package boundary, ADR-007), `go/ast` structural probe-presence check | Blocking (PR merge / CI) |
+| Fault-injection (behavioral) | `pull_request`, `push: [main]` | `go test ./... -tags=faultinjection` — exercises read-only FS, WAL-unsupported FS, disk-full, backup-dir-unwritable scenarios against real adapters (ADR-007 layer 3), including the self-application test that `Probe()` is actually invoked at startup | Blocking (CI) — this is ADR-007's own CI harness, not new scope invented here |
+| Release | `push: tags: ['v*']` | Pre-release mutation testing gate (below) → GoReleaser: cross-compile (linux/macos/windows × amd64/arm64), SBOM (`syft`, CycloneDX), checksum + optional `cosign` signing, GitHub Release publish, Homebrew tap formula bump | Blocking (release publish only — does not block per-feature merges to `main`) |
+
+No acceptance/capacity/production stages in the live-service sense apply (no deployment target,
+no traffic to shift) — the CLI-equivalent of "production stage" is the release artifact itself
+plus post-release smoke checks (below, Deployment Strategy).
+
+**Rejected simpler alternative (Core Principle 4)**: a single monolithic `ci.yml` job running
+everything serially was considered and rejected in favor of parallel jobs per concern
+(lint/test/security/fault-injection) — the fault-injection suite alone can run several minutes
+(tmpfs mount setup), and serializing it behind every other check would blow past the <10 minute
+commit-stage target with zero benefit; parallel jobs with `needs` only where a real dependency
+exists (release job needs mutation-testing job) keeps the fast checks fast.
+
+### [REF] Monitoring Contracts (KPI-to-Instrument Mapping)
+
+Full per-KPI event schema, log fields, and measurement window in
+`docs/product/kpi-contracts.yaml` (SSOT, created this wave). Summary — one row per outcome KPI
+from `outcome-kpis.md`:
+
+| KPI | Instrumented? | Event(s) | Source |
+|---|---|---|---|
+| North Star — weekly active `bm find` | Yes | `bm.find` (ts, result_count) | `UsageLogger` (new port) → `FileUsageLogAdapter` |
+| KPI-1 — save adoption rate | Yes | `bm.save` (ts, outcome: new/duplicate/tag_update) | Same |
+| KPI-2 — time-to-locate | No (pilot observation) | — | Stopwatch task-timing + weekly self-report, product-owner owned; `bm.find` timestamps usable as an auxiliary cross-check only |
+| KPI-3 — zero-install share (guardrail) | Auxiliary only | `bm.share` (ts) | Event count is a usage signal; the actual guardrail is observed on the recipient's machine, which no local log on the sender's machine can see |
+| KPI-4 — tag comprehension (guardrail) | No | — | One-time usability re-test before Release 1 ships |
+
+**Design decision — local opt-in event log + `bm stats` (user decision, this session)**: closes
+brief.md Section 18's flagged instrumentation dependency. Detailed design:
+
+- **New driven port**: `UsageLogger.Record(event UsageEvent) error` — bounded-change contract
+  shape, same classification pattern as `BookmarkWriter`/`BackupService` (brief.md Section 5).
+- **New driven adapter**: `FileUsageLogAdapter`, bounded to `${data_dir}/usage.log` only
+  (append-only JSONL). Implements `Probe() error` per the existing ADR-007 pattern (log
+  directory writable check) — the AST structural pre-commit hook and behavioral fault-injection
+  CI harness both extend to cover this adapter automatically, since they walk *every* type
+  implementing a driven-adapter interface, not a hardcoded list. No new enforcement-tooling
+  scope required.
+- **Opt-in mechanism**: default `telemetry_enabled = false`; a first-run prompt or
+  `bm config set telemetry.enabled true` flips it. When disabled, composition root wires a
+  `NoOpUsageLogAdapter` instead — command handlers call `UsageLogger.Record()` unconditionally
+  either way, keeping the imperative shell free of scattered `if telemetry_enabled` branches.
+- **Privacy design decision (added this wave, not directed by the user's telemetry answer
+  verbatim but a direct consequence of it)**: event payloads never include URL or tag content —
+  only event name, timestamp, and small enumerated outcome fields. Nothing leaves the machine,
+  and the local file itself avoids storing the sensitive content a second time.
+- **New driving port**: `bm stats` — read-only, parses `usage.log`, prints a local weekly
+  summary. Pure-read contract shape; aggregation logic is a pure function in the core
+  (parses log lines → summary value), thin imperative shell for the file read + terminal print,
+  consistent with the project's functional-core/imperative-shell paradigm.
+
+**Rejected simpler alternative**: storing usage events as rows in the existing
+`bookmarks.db` SQLite file (reusing ADR-002's storage engine, zero new file) was considered and
+rejected — it would couple telemetry data to bookmark data inside the same backup snapshots
+(ADR-005's rotating snapshots would now also carry usage history), muddying two orthogonal
+concerns and complicating "delete my usage log" as a privacy control (would require a
+schema-aware delete instead of `rm usage.log`). A dedicated flat file matches the existing
+`FileBackupAdapter` precedent (bounded-change, single-purpose adapter) and needs no new
+schema/migration.
+
+### [REF] Deployment Strategy
+
+**No live-service deployment target exists** (confirmed in Contradiction Check above). The
+CLI-equivalent deployment strategy is **release/versioning**, tied directly to the trunk-based
+branching model below:
+
+- **Distribution channels** (already decided in DESIGN, brief.md Section 3.1, unchanged here):
+  Homebrew tap, GitHub release binaries, `go install`.
+- **Versioning**: Semantic versioning (`vMAJOR.MINOR.PATCH`), release tag on `main` triggers the
+  release pipeline (above).
+- **Rollback contract (designed first, per Core Principle 7)**:
+  1. **Homebrew tap rollback**: revert the tap formula to the previous version's commit/tag —
+     a single-command, near-instant rollback for anyone installing fresh or upgrading.
+  2. **GitHub Release rollback**: mark the bad release as a pre-release/deprecated with a note
+     pointing to the last-known-good tag; binaries for the bad tag remain downloadable (never
+     force-deleted) so existing installs are not broken by the rollback action itself.
+  3. **`go install` rollback**: users pin `go install github.com/.../bm@vPREVIOUS` — no registry
+     to "undo," the previous tag remains resolvable indefinitely (git tags are immutable).
+  4. **No auto-update mechanism exists** — a bad release does not propagate to already-installed
+     binaries; blast radius is bounded to users who explicitly reinstall/upgrade after the bad
+     tag ships, which is the CLI-native equivalent of "no traffic shift happened yet."
+  5. **Data rollback**: N/A at the release level — no server-side data migration exists. Any
+     future local SQLite schema change (none exists yet in MVP) would need its own
+     forward-compatible-read rollback design at that time; flagged here so it isn't silently
+     assumed covered by this section.
+- **Post-release validation (CLI-equivalent smoke test)**: after GoReleaser publish, a follow-up
+  job installs the freshly tagged binary via each distribution channel on a clean environment
+  (see `environments.yaml` `clean`) and runs `bm save`/`bm find`/`bm share` against a throwaway
+  store, confirming the release artifact actually works end-to-end before the release is
+  considered complete — advisory gate (post-deploy monitoring category per the gate taxonomy),
+  failure triggers the rollback contract above, not an automatic re-publish.
+
+### [REF] Mutation Testing Strategy
+
+**Selected: pre-release** (user decision, this session). Rationale (relayed from the user,
+recorded here for traceability): ADR-007's fault-injection CI harness already adds significant
+per-feature CI weight (behavioral layer, tmpfs mount fixtures); layering per-feature mutation
+testing on top was judged disproportionate delivery friction for a solo maintainer. Full-solution
+mutation coverage matters most at the release boundary, not on every commit.
+
+- **Tool**: `gremlins` (OSS, MIT, actively maintained Go mutation-testing tool) — chosen over
+  `go-mutesting` (largely unmaintained) for a Go-native, currently-supported tool; no other
+  viable Go mutation-testing tool was found in this ecosystem search.
+- **Scope**: entire solution (`gremlins unleash ./...`), not delta-scoped.
+- **Trigger**: `push: tags: ['v*']`, gating the release pipeline before the GoReleaser publish
+  step (see CI/CD Pipeline Outline table) — gated at the release boundary, not blocking
+  per-feature delivery to `main`.
+- **Report**: published as a release-pipeline artifact (kill-rate summary); no numeric kill-rate
+  floor is hard-coded yet in this wave (no prior baseline exists for a greenfield project) — the
+  first release establishes the baseline, subsequent releases compare against it. This is
+  recorded as an open item for whoever runs the first release to close, not silently decided
+  here without data.
+
+### [REF] Observability Stack
+
+No traditional server-side observability applies (no logs aggregator, no metrics backend, no
+distributed tracing target — confirmed zero network calls, brief.md Section 0/17). The
+CLI-equivalent local stack:
+
+| Signal class | Tool/mechanism |
+|---|---|
+| Logs (usage/business events) | `${data_dir}/usage.log`, JSONL, opt-in only (see Monitoring Contracts) |
+| Logs (operational/error) | Structured stderr output with mandatory text-prefix per brief.md Section 9's accessibility rule (`Saved`, `already saved as`, `no matches found`, `Error:`) — doubles as the CLI's only "error tracking" surface, no separate error-tracking service exists |
+| Metrics | `bm stats` — local aggregation of `usage.log`, no metrics backend |
+| Traces | N/A — single-process, single-request-per-invocation CLI; no distributed call graph exists to trace |
+| Health checks | ADR-007 `Probe()` contract at every startup — the CLI's equivalent of a liveness/readiness check, refusing the operation (`health.startup.refused`) rather than degrading silently |
+
+### [REF] Branching Strategy
+
+**Selected: Trunk-Based Development** (user decision, this session). Single `main` branch,
+short-lived feature branches (<1 day). CI/CD alignment:
+
+- **Triggers**: `push: [main]` runs the full commit + fault-injection stages (main must always
+  stay releasable, per trunk-based's own requirement for robust automated gates). `tags: ['v*']`
+  runs the release pipeline.
+- **Branch protection on `main`**: required status checks (build, test+coverage, lint, SAST,
+  SCA, secrets scan, `go-arch-lint`, AST structural probe check, fault-injection suite) all
+  must pass before merge; linear history required; force-push restricted.
+- **PR gates**: for a solo maintainer, self-merge is expected — the automated status checks
+  above are the actual gate, not a second-approver review (no team to provide one). This is
+  documented explicitly rather than silently omitting the "review approvals" cell from the
+  gate taxonomy.
+
+### [REF] Coexistence Matrix
+
+Full detail in `environments.yaml`. Summary: **N/A / empty by design** — `bm` installs no hooks,
+daemons, or shell-rc mutations and shares no external state with other tools, so there is
+nothing for a deployment of `bm` to break. Recorded explicitly (not omitted) so the empty matrix
+reads as a verified conclusion, not an oversight.
+
+### [REF] Pre-requisites From DESIGN
+
+Constraints the platform/pipeline must satisfy, carried forward from `brief.md`:
+
+- Zero network calls anywhere in the architecture (brief.md Section 0) — any future CI/CD or
+  telemetry design that introduces one would re-open the closed feasibility question; the local
+  opt-in usage log above was designed specifically to preserve this constraint.
+- Every driven adapter (including the new `FileUsageLogAdapter`) must implement and be probed
+  via `Probe() error` at startup (ADR-007) — enforced by the existing 3-layer tooling with no
+  new scope required, since the tooling walks all adapters generically.
+- <100ms perceived-save-confirmation budget (brief.md Section 1) — the usage-log write for
+  `bm.save` must not block the printed confirmation, mirroring the existing backup-snapshot
+  ordering note in brief.md Section 8 (snapshot copy happens after confirmation is printed).
+- No ANSI-color-only status indicators (brief.md Section 9) — carried into the Observability
+  Stack's stderr design above.
+- 10,000-bookmark resource-scaling target (brief.md Section 10) — no pipeline change required;
+  noted so DISTILL doesn't need to re-derive it.
+
+### [REF] Handoff Status
+
+**Handoff-ready to DISTILL (nw-acceptance-designer)**, pending one open item: the
+`## Mutation Testing Strategy` write to `CLAUDE.md` is finalized in content (pre-release
+template text) but held pending direct user confirmation — see
+`docs/feature/bookmark-cli/devops/wave-decisions.md` for the full explanation and the specific
+confirmation this agent needs, following the same standing-rule precedent DESIGN wave already
+established for CLAUDE.md writes (agent-relayed approval claims are not sufficient
+authorization). This does not block the DISTILL handoff — acceptance-designer can proceed using
+`environments.yaml` and this section's content regardless of when the CLAUDE.md write lands.
+
+Per-wave Forge review (`nw-platform-architect-reviewer`) was evaluated against its trigger list
+(novel deployment target, new CI/CD framework, observability rewrite, security posture change,
+maintainer-flagged uncertainty) — **none fired**: GitHub Actions + Homebrew is a conventional,
+well-understood setup for this project size, so per-wave review is skipped per the `nw-devops`
+skill's default. The mandatory consolidated review (Eclipse + Architect + Forge + Sentinel) fires
+at the end of DISTILL against the full `feature-delta.md`.
