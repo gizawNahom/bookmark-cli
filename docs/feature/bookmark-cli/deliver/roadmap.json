@@ -1,0 +1,184 @@
+{
+  "roadmap": {
+    "project_id": "bookmark-cli",
+    "created_at": "2026-08-08T08:43:19Z",
+    "total_steps": 7
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "Save Core + Walking Skeleton",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Walking skeleton: save/find/share wired end-to-end, save confirmation UX, untagged save",
+          "criteria": [
+            "`bm save <url> --tag <tag>` exits 0 and prints a confirmation containing 'Saved', the bookmark id, and the tag",
+            "`bm find <tag> <keyword>` exits 0 and shows the just-saved URL",
+            "`bm share <id>` exits 0 and prints a plain-text, copy-paste-ready snippet containing the saved URL (zero-install proxy: plain text, no attachment)",
+            "`bm save --help` shows a concrete example line containing '--tag k8s' (Cobra static Example metadata)",
+            "`bm save <url>` with no --tag exits 0, prints a confirmation with a bookmark id and no tag shown, and the link is retrievable by keyword via `bm find` (find.match_count increases by 1)",
+            "`bm save` confirmation appears within a 2s responsive-feedback budget (generous CI budget, not the 100ms perceived-save target)"
+          ],
+          "test_file": "tests/acceptance/bookmark_cli/walking_skeleton_test.go; tests/acceptance/bookmark_cli/save_scenarios_test.go",
+          "scenario_name": "TestWalkingSkeleton_SaveFindShare;TestSaveHelp_ShowsConcreteExample;TestSave_WithoutTag_StillSavesAndRetrievable;TestSave_ConfirmationIsResponsive",
+          "dependencies": [],
+          "implementation_notes": "Implement the RED scaffolds needed for the first vertical slice only: internal/core/types.go (Record, SavePlan, ValidationResult -- already type-only, no panics), internal/core/validator.go ValidateURL, internal/core/planner.go PlanSave (Plan-value pattern: returns SavePlan{New|Duplicate|TagUpdate}, never mutates -- ADR-006), internal/adapters/sqlitestore/store.go Store.Probe/FindByID/Search/All/Execute (WAL mode, busy_timeout, Probe() verifies WAL/fsync per brief.md Section 11/12), cmd/bm/main.go composition root (wire-then-probe-then-use invariant: adapters that fail Probe() cause 'health.startup.refused', panic-recovery boundary already in place) and cmd/bm/render.go renderSaveConfirmation/renderFindResult. TestSaveHelp_ShowsConcreteExample requires no scaffold work (static Cobra Example: field already correct per distill/red-classification.md) -- un-skip only. Un-skip one scenario at a time per ADR-025 in story-map order: TestWalkingSkeleton_SaveFindShare first (already active RED), then TestSaveHelp_ShowsConcreteExample, then TestSave_WithoutTag_StillSavesAndRetrievable, then TestSave_ConfirmationIsResponsive. BookmarkReader must expose only FindByID/Search/All (no write methods) per Core Principle 12's read/write port-splitting rule. TEST PARADIGM (mandatory): Unit tests for pure core functions (internal/core/*) MUST be property-based where the contract supports a universal invariant (e.g. TagNormalizer idempotency, Matcher ranking stability) -- use a Go PBT library (e.g. `pgregory.net/rapid` or `testing/quick`) with `@given`-equivalent generators. Single-example table-driven unit tests are FALLBACK only -- document why in a `// bypass:` comment if used. Integration tests against real adapters (SQLite, filesystem) REMAIN single-example -- they verify wiring, not invariants.",
+          "files_to_modify": [
+            "internal/core/types.go",
+            "internal/core/validator.go",
+            "internal/core/planner.go",
+            "internal/ports/ports.go",
+            "internal/adapters/sqlitestore/store.go",
+            "cmd/bm/main.go",
+            "cmd/bm/render.go"
+          ]
+        },
+        {
+          "id": "01-02",
+          "name": "Save duplicate/tag-update detection, malformed URL rejection, query-param fidelity",
+          "criteria": [
+            "Saving a URL that already exists exits 0, prints an 'already saved' message including its existing bookmark id, and creates no second entry (find.match_count unchanged)",
+            "`bm save not-a-url --tag <tag>` exits non-zero, prints a message containing 'valid URL' or \"doesn't look like\", and saves nothing (find.match_count unchanged)",
+            "Saving an existing URL with a new tag exits 0, offers to add the new tag to the existing bookmark (message mentions the new tag), and creates no second entry (find.match_count unchanged)",
+            "Saving a URL with query parameters (`?id=42&version=3`) exits 0 and the full URL including query parameters is intact and findable via `bm find`"
+          ],
+          "test_file": "tests/acceptance/bookmark_cli/save_scenarios_test.go",
+          "scenario_name": "TestSave_ExactDuplicate_DetectedNotDuplicated;TestSave_MalformedURL_RejectedWithClearMessage;TestSave_SameURLNewTag_OffersTagUpdateNotDuplicate;TestSave_URLWithQueryParams_SavesWithFullFidelity",
+          "dependencies": ["01-01"],
+          "implementation_notes": "Implement internal/core/duplicate.go CheckDuplicate (pure-function contract shape: reads a supplied []Record, returns a DuplicateVerdict, never queries storage itself, per brief.md Section 5), and extend internal/core/validator.go / internal/core/planner.go so PlanSave classifies New/Duplicate/TagUpdate correctly using CheckDuplicate's verdict. No storage-layer mutation may occur except through BookmarkWriter.Execute(plan) -- duplicate/tag-update detection must remain a pure decision returned as data (the exact bug class ADR-006/v3.15.1 precedent guards against). Un-skip one scenario at a time per ADR-025, in story-map order (US-01 duplicate scenario before US-05 scenarios). TEST PARADIGM (mandatory): Unit tests for pure core functions (internal/core/*) MUST be property-based where the contract supports a universal invariant (e.g. TagNormalizer idempotency, Matcher ranking stability) -- use a Go PBT library (e.g. `pgregory.net/rapid` or `testing/quick`) with `@given`-equivalent generators. Single-example table-driven unit tests are FALLBACK only -- document why in a `// bypass:` comment if used. Integration tests against real adapters (SQLite, filesystem) REMAIN single-example -- they verify wiring, not invariants.",
+          "files_to_modify": [
+            "internal/core/duplicate.go",
+            "internal/core/validator.go",
+            "internal/core/planner.go"
+          ]
+        },
+        {
+          "id": "01-03",
+          "name": "Save discoverability hint and near-miss flag correction",
+          "criteria": [
+            "`bm save <url>` with no --tag exits 0 and prints a one-line hint mentioning '--tag' to encourage tagging",
+            "`bm save <url> --tags <value>` (typo: plural flag) surfaces a message containing 'did you mean' (case-insensitive), not a bare Cobra 'unknown flag' error, and does not fail silently or with a bare parse error"
+          ],
+          "test_file": "tests/acceptance/bookmark_cli/save_scenarios_test.go",
+          "scenario_name": "TestSave_WithoutTag_ShowsDiscoverabilityHint;TestSave_NearMissFlag_SuggestsDidYouMean",
+          "dependencies": ["01-01"],
+          "implementation_notes": "Cobra gives command-level 'did you mean' suggestions natively only (brief.md Section 19 Open Question 3); flag-level near-miss correction for '--tags' -> '--tag' must be implemented explicitly in cmd/bm/main.go's flag-parsing/error-handling path (e.g. a custom FParseErrWhitelist/error handler comparing the unknown flag against known flags via edit distance), not left to Cobra's default. The discoverability hint is UX-only text composed in cmd/bm/render.go, no core logic change required beyond what 01-01 already wired. Un-skip one scenario at a time per ADR-025. TEST PARADIGM (mandatory): Unit tests for pure core functions (internal/core/*) MUST be property-based where the contract supports a universal invariant (e.g. TagNormalizer idempotency, Matcher ranking stability) -- use a Go PBT library (e.g. `pgregory.net/rapid` or `testing/quick`) with `@given`-equivalent generators. Single-example table-driven unit tests are FALLBACK only -- document why in a `// bypass:` comment if used. Integration tests against real adapters (SQLite, filesystem) REMAIN single-example -- they verify wiring, not invariants.",
+          "files_to_modify": [
+            "cmd/bm/main.go",
+            "cmd/bm/render.go"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02",
+      "name": "Find",
+      "steps": [
+        {
+          "id": "02-01",
+          "name": "Find by tag/keyword with metadata, keyword-only, typo-tolerant, ranked multi-match",
+          "criteria": [
+            "`bm find <tag> <keyword>` exits 0 and shows the matching link with its bookmark id, tag, and 'saved N days ago' metadata",
+            "`bm find <keyword>` (no tag) exits 0 and shows the matching untagged link",
+            "`bm find <typo-of-tag>` still surfaces the correctly-tagged link ranked in the results (fuzzy/typo-tolerant match)",
+            "`bm find <shared-tag>` with 3 saved links under that tag shows all 3 matches ranked by relevance, not forced to a single guess"
+          ],
+          "test_file": "tests/acceptance/bookmark_cli/find_scenarios_test.go",
+          "scenario_name": "TestFind_ByTagAndKeyword_ShowsMatchWithMetadata;TestFind_ByKeywordAlone_ShowsMatch;TestFind_NearMissTypo_StillSurfacesMatch;TestFind_MultipleMatches_RankedNotForcedToOne",
+          "dependencies": ["01-01", "01-02"],
+          "implementation_notes": "Implement internal/core/matcher.go RankMatches (pure-function contract shape, no I/O, per brief.md Section 5) as the fuzzy-match/ranking engine backing `bm find`; wire it into cmd/bm/main.go's find command handler via the read-only BookmarkReader port (FindByID/Search/All only -- structurally cannot write, per Core Principle 12). Render output (id, tag, 'saved N days ago', ranked ordering) in cmd/bm/render.go. Typo-tolerance and ranking stability are the property-based-testable invariants at the unit layer (Matcher.Rank ranking stability, per brief.md Section 5's Assertion Mechanism column); the acceptance layer itself stays example-only per Mandate 9 (subprocess/FS layer 3). Un-skip one scenario at a time per ADR-025. TEST PARADIGM (mandatory): Unit tests for pure core functions (internal/core/*) MUST be property-based where the contract supports a universal invariant (e.g. TagNormalizer idempotency, Matcher ranking stability) -- use a Go PBT library (e.g. `pgregory.net/rapid` or `testing/quick`) with `@given`-equivalent generators. Single-example table-driven unit tests are FALLBACK only -- document why in a `// bypass:` comment if used. Integration tests against real adapters (SQLite, filesystem) REMAIN single-example -- they verify wiring, not invariants.",
+          "files_to_modify": [
+            "internal/core/matcher.go",
+            "cmd/bm/main.go",
+            "cmd/bm/render.go"
+          ]
+        },
+        {
+          "id": "02-02",
+          "name": "Find no-match closest-tag suggestion, clean no-close-tag message, empty-store onboarding, responsive no-match",
+          "criteria": [
+            "A search with no matches but a nearby existing tag exits with a message containing 'no matches' and a closest-tag suggestion mentioning that tag",
+            "A search with no matches and no close tag exits with a non-blank, clear 'no matches' message, with no panic/stack trace in stdout or stderr",
+            "`bm find <anything>` against a genuinely empty store shows a message telling the user they haven't saved any links yet, visibly distinct from a normal no-match message",
+            "A no-match response (exit 0, message containing 'no matches') appears within a 2s responsive-feedback budget"
+          ],
+          "test_file": "tests/acceptance/bookmark_cli/find_scenarios_test.go",
+          "scenario_name": "TestFind_NoMatch_SuggestsClosestTag;TestFind_NoMatch_NoCloseTag_ShowsCleanMessage;TestFind_EmptyStore_ShowsOnboardingMessage;TestFind_NoMatchResponse_IsResponsive",
+          "dependencies": ["02-01"],
+          "implementation_notes": "Extend internal/core/matcher.go RankMatches (or a sibling pure function) to also produce a nearest-tag suggestion when the ranked match set is empty (FTS5 tokenizer/ranking tuning for this suggestion is an open item, brief.md Section 19 Open Question 2 -- a reasonable pure-function nearest-neighbor comparison against known tags is sufficient for DELIVER). Empty-store detection is a BookmarkReader.All()/count check in cmd/bm/main.go's find handler, rendered as a distinct onboarding message in cmd/bm/render.go (never conflated with the ordinary no-match path). No ANSI-color-only status indicators (brief.md Section 9) -- every status line needs a text prefix. Un-skip one scenario at a time per ADR-025. TEST PARADIGM (mandatory): Unit tests for pure core functions (internal/core/*) MUST be property-based where the contract supports a universal invariant (e.g. TagNormalizer idempotency, Matcher ranking stability) -- use a Go PBT library (e.g. `pgregory.net/rapid` or `testing/quick`) with `@given`-equivalent generators. Single-example table-driven unit tests are FALLBACK only -- document why in a `// bypass:` comment if used. Integration tests against real adapters (SQLite, filesystem) REMAIN single-example -- they verify wiring, not invariants.",
+          "files_to_modify": [
+            "internal/core/matcher.go",
+            "cmd/bm/main.go",
+            "cmd/bm/render.go"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03",
+      "name": "Share",
+      "steps": [
+        {
+          "id": "03-01",
+          "name": "Share zero-install snippet, exact-match fidelity, no-tag safety, unknown-id error",
+          "criteria": [
+            "`bm share <id>` for a tagged bookmark exits 0 and prints a copy-paste-ready plain-text snippet containing the URL and tag",
+            "The URL shown by `bm share <id>` exactly matches the URL shown by `bm find` for the same bookmark",
+            "`bm share <id>` for an untagged bookmark exits 0, prints a valid snippet containing the URL, with no broken tag field (no literal 'tag: )' or 'tag: <nil>')",
+            "`bm share <unknown-id>` exits non-zero, and the combined stdout+stderr contains the invalid id and is non-blank (clear, specific error, not a blank or garbled snippet)"
+          ],
+          "test_file": "tests/acceptance/bookmark_cli/share_scenarios_test.go",
+          "scenario_name": "TestShare_CuratedLink_ProducesZeroInstallSnippet;TestShare_SnippetMatchesFindRecordExactly;TestShare_LinkWithoutTag_ProducesValidSnippet;TestShare_UnknownID_FailsClearly",
+          "dependencies": ["01-01", "02-01"],
+          "implementation_notes": "Implement internal/core/formatter.go FormatSnippet (pure-function contract shape, no I/O, per brief.md Section 5) taking a resolved Record and producing a ShareSnippet value; wire into cmd/bm/main.go's share command handler via BookmarkReader.FindByID only (read-only port, cannot mutate). Untagged records must format without a broken 'tag: )' / 'tag: <nil>' artifact -- FormatSnippet must branch cleanly on an absent tag. Unknown-id resolution failure must surface the invalid id verbatim in the error text and exit non-zero. Un-skip one scenario at a time per ADR-025. TEST PARADIGM (mandatory): Unit tests for pure core functions (internal/core/*) MUST be property-based where the contract supports a universal invariant (e.g. TagNormalizer idempotency, Matcher ranking stability) -- use a Go PBT library (e.g. `pgregory.net/rapid` or `testing/quick`) with `@given`-equivalent generators. Single-example table-driven unit tests are FALLBACK only -- document why in a `// bypass:` comment if used. Integration tests against real adapters (SQLite, filesystem) REMAIN single-example -- they verify wiring, not invariants.",
+          "files_to_modify": [
+            "internal/core/formatter.go",
+            "cmd/bm/main.go"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04",
+      "name": "Adapter Integration",
+      "steps": [
+        {
+          "id": "04-01",
+          "name": "Backup snapshot on save, opt-in telemetry with privacy guarantee, degraded-filesystem refusal",
+          "criteria": [
+            "A successful `bm save` exits 0 and creates a non-empty backup directory containing at least one snapshot file, written after the confirmation is printed (brief.md Section 8 ordering)",
+            "With telemetry opted in, a successful `bm save` exits 0 and appends a 'bm.save' event to the local usage log, and the logged content never contains the saved URL or tag text (privacy-by-design)",
+            "With the data directory mounted read-only, `bm save` exits non-zero, the combined stdout+stderr contains 'health.startup.refused', and no partial write occurs"
+          ],
+          "test_file": "tests/acceptance/bookmark_cli/adapter_integration_scenarios_test.go",
+          "scenario_name": "TestSave_CreatesBackupSnapshot;TestSave_WithTelemetryEnabled_RecordsUsageEvent;TestSave_DegradedFilesystem_RefusesCleanly",
+          "dependencies": ["01-01", "01-02", "01-03"],
+          "implementation_notes": "Implement internal/adapters/backup/filebackup.go Adapter.Probe/Snapshot (bounded-change contract shape, bounded to ${data_dir}/backups/ only, per brief.md Section 5/11) and internal/adapters/usagelog/usagelog.go FileUsageLogAdapter.Probe/Record (bounded-change, bounded to ${data_dir}/usage.log only; NoOpUsageLogAdapter is already real/non-scaffolded per distill inventory). Wire the composition root (cmd/bm/main.go) so telemetry_enabled defaults false -> NoOpUsageLogAdapter, true -> FileUsageLogAdapter, and command handlers call UsageLogger.Record() unconditionally either way (no scattered if-telemetry-enabled branches, per DEVOPS Monitoring Contracts design). Event payloads must contain only event name, timestamp, and small enumerated outcome fields -- never URL/tag content. Extend internal/adapters/sqlitestore/store.go's Probe() to detect and refuse a read-only/degraded data directory with the exact 'health.startup.refused' message per ADR-007's composition-root invariant (wire then probe then use); backup write must happen strictly after the save confirmation is printed per the <100ms perceived-save-confirmation budget (brief.md Section 1/DEVOPS Pre-requisites). Per the DISTILL Final Wave Review Gate's accepted MEDIUM-1/MEDIUM-2 action items, confirm during this step that the go/ast structural probe-presence check (ADR-007 layer 2) and the fault-injection CI harness (-tags=faultinjection) both auto-enumerate FileUsageLogAdapter and FileBackupAdapter without any hardcoded adapter list. Un-skip one scenario at a time per ADR-025, backup/telemetry/degraded-filesystem last since they depend on `bm save` already being GREEN. TEST PARADIGM (mandatory): Unit tests for pure core functions (internal/core/*) MUST be property-based where the contract supports a universal invariant (e.g. TagNormalizer idempotency, Matcher ranking stability) -- use a Go PBT library (e.g. `pgregory.net/rapid` or `testing/quick`) with `@given`-equivalent generators. Single-example table-driven unit tests are FALLBACK only -- document why in a `// bypass:` comment if used. Integration tests against real adapters (SQLite, filesystem) REMAIN single-example -- they verify wiring, not invariants.",
+          "files_to_modify": [
+            "internal/adapters/backup/filebackup.go",
+            "internal/adapters/usagelog/usagelog.go",
+            "internal/adapters/sqlitestore/store.go",
+            "cmd/bm/main.go"
+          ]
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "internal/",
+      "cmd/bm/"
+    ],
+    "test_directories": [
+      "tests/acceptance/bookmark_cli/",
+      "tests/common/"
+    ],
+    "excluded_patterns": []
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "nw-acceptance-designer-reviewer",
+    "approved_at": "2026-08-08T00:00:00Z"
+  }
+}
