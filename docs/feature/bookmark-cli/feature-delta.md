@@ -1202,3 +1202,34 @@ non-matching bookmark, mirroring the sibling `TestFind_NoMatch_NoCloseTag_ShowsC
 pattern, and removed the `t.Skip("BLOCKED: ...")` marker. This is a test-only fix — zero production
 code was touched — and `go build ./... && go vet ./...` plus the file's scenario run confirm the
 suite is internally consistent and green.
+
+## Wave: DELIVER / [REF] Post-Merge Integration Gate
+
+**Status: PASS.** All 7 roadmap steps (01-01, 01-02, 01-03, 02-01, 02-02, 03-01, 04-01) reached
+COMMIT. Full acceptance suite: `go build ./...`, `go vet ./...`, `gofmt -l .` all clean;
+`go test ./...` — **25/25 scenarios GREEN**, 0 failures, 0 skips remaining.
+
+**Environment matrix coverage** (`docs/feature/bookmark-cli/environments.yaml`): this Go acceptance
+suite exercises all 3 declared environments directly through its fixtures rather than via separate
+CI environment runs (consistent with DISTILL's own pre-requisites note) —
+- `clean`: every scenario using a bare `NewCLI(t)` (no prior state)
+- `existing-store`: every scenario using `.WithExistingStore(...)` (e.g. duplicate/tag-update,
+  find-with-metadata, share scenarios)
+- `degraded-filesystem`: `TestSave_DegradedFilesystem_RefusesCleanly` (read-only data dir,
+  `health.startup.refused` refusal path)
+
+**Elevator Pitch demo execution** — all 6 non-`@infrastructure` user stories demoed against the
+built `bm` binary (`go build -o bm ./cmd/bm`) in a scratch `${BM_DATA_DIR}`, subprocess-invoked,
+stdout + exit code captured:
+
+| Story | Command | Exit | Stdout (verbatim) |
+|---|---|---|---|
+| US-01 (Capture) | `bm save https://kube.io/docs/failover --tag k8s` | 0 | `Saved [3597] https://kube.io/docs/failover (tag: k8s)` |
+| US-02 (Locate) | `bm find k8s failover` | 0 | `[3597] https://kube.io/docs/failover (tag: k8s) -- saved today` |
+| US-03 (Share) | `bm share 3597` | 0 | `https://kube.io/docs/failover (tag: k8s)` |
+| US-04 (Tag discoverability) | `bm save https://example.com/no-tag-doc` | 0 | `Saved [6051] https://example.com/no-tag-doc` + `Hint: add --tag <name> next time to make this easier to find later` |
+| US-05 (Duplicate/invalid feedback) | `bm save https://kube.io/docs/failover --tag k8s` (repeat) | 0 | `https://kube.io/docs/failover is already saved as [3597] -- no new entry created` |
+| US-06 (No-match experience) | `bm find zzz-nothing-saved-under-this` | 0 | `no matches found` |
+
+All 6 demos: exit code 0, non-empty stdout, content matches each story's "sees" clause. Gate
+condition satisfied — proceeding to Phase 3 (L1-L6 refactoring).
