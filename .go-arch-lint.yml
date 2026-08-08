@@ -1,0 +1,70 @@
+# go-arch-lint config -- enforces ADR-006 (functional core / imperative shell) and ADR-007
+# (driven-adapter boundary) package boundaries as a CI gate (feature-delta.md DEVOPS wave,
+# "PR / commit stage" -> go-arch-lint job).
+#
+# Layering transcribed directly from already-accepted ADR-006/ADR-007, not new architecture
+# design: internal/core is the pure functional core (no I/O, no port/adapter knowledge);
+# internal/ports declares the hexagonal boundary; internal/adapters/* are driven adapters
+# (implement ports, may reach out to the filesystem/DB); cmd/bm is the composition root
+# (imperative shell) and is the only package allowed to see every other component.
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+
+excludeFiles:
+  - "^.*_test\\.go$"
+
+vendors:
+  cobra:        { in: [ github.com/spf13/cobra, github.com/spf13/pflag ] }
+  sqlite:       { in: modernc.org/sqlite }
+  uuid:         { in: github.com/google/uuid }
+
+components:
+  core:      { in: internal/core/** }
+  ports:     { in: internal/ports/** }
+  adapters:  { in: internal/adapters/** }
+  cmd:       { in: cmd/** }
+  # Test-support helpers (acceptance-test harness fixtures, not production code). Given no
+  # boundary constraint deliberately: DISTILL/DELIVER own this package's internal shape.
+  tests:     { in: tests/** }
+
+deps:
+  # Pure functional core: no I/O, no knowledge of ports or adapters (brief.md Section 5 /
+  # ADR-006). Standard library only -- deliberately absent from this map: an absent component
+  # has zero allowed project/vendor deps by default, which is exactly the constraint this
+  # component needs.
+
+  # Hexagonal boundary: ports declare interfaces in terms of core value types only.
+  ports:
+    mayDependOn:
+      - core
+
+  # Driven adapters (ADR-007): implement ports, may depend on core (for value types) and
+  # whichever concrete vendor library they wrap. Each adapter package is intentionally not
+  # allowed to depend on a sibling adapter package -- adapters are independent, bounded-change
+  # units (brief.md Section 5's "bounded-change adapter" classification).
+  adapters:
+    mayDependOn:
+      - core
+      - ports
+    canUse:
+      - sqlite
+      - uuid
+
+  # Composition root (imperative shell): the only component allowed to see every other
+  # component, per "wire then probe then use" (ADR-007).
+  cmd:
+    mayDependOn:
+      - core
+      - ports
+      - adapters
+    canUse:
+      - cobra
+
+  # Test-support helpers may reach into any component -- they exist to construct fixtures
+  # against the real production types (Pillar 3: acceptance tests exercise the real binary).
+  tests:
+    anyProjectDeps: true
+    anyVendorDeps: true

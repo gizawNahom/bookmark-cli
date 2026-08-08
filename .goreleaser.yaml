@@ -1,0 +1,105 @@
+# GoReleaser config for bookmark-cli's release pipeline (feature-delta.md DEVOPS wave,
+# "[REF] CI/CD Pipeline Outline" release row + "[REF] Deployment Strategy"): cross-compile
+# (linux/macos x amd64/arm64, windows excluded per the Final Wave Review Gate HIGH-2 amendment),
+# SBOM (syft, CycloneDX), checksums, optional cosign signing, GitHub Release publish, Homebrew
+# tap formula bump. Invoked from .github/workflows/release.yml on `v*` tags.
+version: 2
+
+project_name: bookmark-cli
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: bm
+    main: ./cmd/bm
+    binary: bm
+    env:
+      - CGO_ENABLED=0
+    # windows deliberately excluded (Final Wave Review Gate finding HIGH-2): environments.yaml's
+    # test platforms (linux, macos, wsl) never covered it, and shipping an artifact with zero
+    # test coverage was judged a worse outcome than not shipping it for v1.
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X 'main.version={{ .Version }}'
+      - -X 'main.commit={{ .Commit }}'
+      - -X 'main.date={{ .Date }}'
+
+archives:
+  - id: bm
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: "checksums.txt"
+
+# SBOM in CycloneDX format (feature-delta.md: "SBOM (syft, CycloneDX)"). Requires the `syft`
+# binary on PATH in the release job (installed via anchore/sbom-action in release.yml).
+sboms:
+  - id: bm-sbom
+    artifacts: archive
+    cmd: syft
+    args:
+      - "$artifact"
+      - "--output"
+      - "cyclonedx-json=$document"
+
+# cosign keyless signing of the checksums file (feature-delta.md: "optional cosign signing").
+# Requires COSIGN_EXPERIMENTAL=1 and OIDC id-token permission in release.yml -- if the `cosign`
+# binary is not present the release job simply does not include this step (see release.yml
+# comment); left here so the artifact-signing shape is fully specified once cosign is wired up.
+signs:
+  - id: checksums-sig
+    cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - "sign-blob"
+      - "--yes"
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+    artifacts: checksum
+
+release:
+  # GITHUB_TOKEN-based publish to the repo goreleaser is invoked from; no owner/name override
+  # needed since GoReleaser derives it from the CI environment (GITHUB_REPOSITORY).
+  draft: false
+  prerelease: auto
+
+# Homebrew tap formula bump (feature-delta.md Deployment Strategy: "Homebrew tap rollback:
+# revert the tap formula to the previous version's commit/tag"). Uses homebrew_casks -- the
+# `brews` pipe (Formula-based) is deprecated by GoReleaser upstream in favor of casks, which
+# now support single-binary CLI installs via `binaries:` without needing a Ruby Formula class.
+# ACTION ITEM (not fabricated here, per the same "no undocumented numbers" discipline the
+# mutation-testing section applies to its kill-rate floor): HOMEBREW_TAP_OWNER must be set as a
+# repository variable, and a HOMEBREW_TAP_GITHUB_TOKEN secret (PAT with contents:write on the
+# tap repo) must exist, before this block can run for real -- neither exists yet for a project
+# with no confirmed GitHub org.
+homebrew_casks:
+  - name: bm
+    repository:
+      owner: "{{ .Env.HOMEBREW_TAP_OWNER }}"
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/{{ .Env.GITHUB_REPOSITORY }}"
+    description: "Terminal-native bookmark manager for infra/platform/SRE engineers (save, find, share -- zero network calls, zero server)."
+    binaries:
+      - bm
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

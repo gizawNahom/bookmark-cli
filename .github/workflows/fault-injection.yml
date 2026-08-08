@@ -1,0 +1,45 @@
+name: Fault Injection
+
+# Behavioral fault-injection suite (feature-delta.md DEVOPS wave, "[REF] CI/CD Pipeline
+# Outline" -- "Fault-injection (behavioral)" row). This is ADR-007's own layer-3 (behavioral)
+# enforcement harness, not new scope invented in DEVOPS: exercises read-only filesystem,
+# WAL-unsupported filesystem, disk-full, and backup-dir-unwritable scenarios against the real
+# adapters, including the self-application test that Probe() is actually invoked at startup.
+#
+# Split into its own workflow (not folded into ci.yml) per feature-delta.md's documented
+# "Rejected simpler alternative": tmpfs mount fixture setup for this suite alone can take
+# several minutes, and serializing it behind the fast commit-stage checks would blow past the
+# <10 minute commit-stage target with zero benefit.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fault-injection-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fault-injection:
+    name: go test -tags=faultinjection
+    # environments.yaml's degraded-filesystem environment is linux/wsl-only (read-only/
+    # WAL-unsupported mount fixtures via tmpfs) -- ubuntu-latest is the CI-representative
+    # surface for that; macOS/WSL are covered by environments.yaml's manual/pilot verification,
+    # not this automated job (tmpfs mount semantics differ on macOS runners).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # The fault-injection suite (ADR-007 layer 3) is DELIVER-wave implementation scope
+      # (files under the faultinjection build tag do not exist in the repo yet at DEVOPS-wave
+      # authoring time). This job wires up the exact invocation ADR-007 and the CI/CD Pipeline
+      # Outline table specify so the gate is blocking from day one, the same posture as
+      # probe-presence-check in ci.yml.
+      - name: Run fault-injection suite
+        run: go test ./... -tags=faultinjection -v

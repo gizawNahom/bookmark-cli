@@ -1,0 +1,131 @@
+name: Release
+
+# Release pipeline (feature-delta.md DEVOPS wave, "[REF] CI/CD Pipeline Outline" -- "Release"
+# row, and "[REF] Mutation Testing Strategy" / "[REF] Deployment Strategy"). Trunk-based
+# branching: triggered by `v*` tags only, cut from `main` (which the commit-stage + fault-
+# injection workflows keep releasable on every push). Does not block per-feature merges to
+# main -- only gates the release publish itself.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # required for the GitHub Release publish + Homebrew tap PR
+  id-token: write # required for cosign keyless signing (OIDC)
+
+jobs:
+  # [REF] Mutation Testing Strategy: gremlins, entire solution, advisory/informational only for
+  # v1.0.0 (Final Wave Review Gate finding CRITICAL-1) -- no kill-rate floor exists yet for a
+  # greenfield codebase, so this job publishes its report as an artifact but never fails the
+  # release. ACTION ITEM for whoever prepares v1.1.0+: read the v1.0.0 report and set an
+  # explicit numeric floor, then remove `continue-on-error` from the "Run gremlins" step below.
+  mutation-testing:
+    name: Mutation testing (gremlins, advisory only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install gremlins
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+      - name: Run gremlins unleash ./... (advisory -- does not fail the release)
+        id: gremlins
+        continue-on-error: true
+        run: gremlins unleash ./... -o gremlins-report.json
+      - name: Surface advisory outcome
+        if: steps.gremlins.outcome == 'failure'
+        run: echo "::warning::gremlins reported mutation-testing findings below internal thresholds. This is advisory-only for v1.0.0 (no baseline exists yet) -- see gremlins-report.json artifact. Does not block release."
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gremlins-mutation-report
+          path: gremlins-report.json
+          retention-days: 90
+
+  goreleaser:
+    name: GoReleaser (cross-compile, SBOM, sign, publish, Homebrew bump)
+    needs: [mutation-testing]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # GoReleaser needs full history for changelog generation
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install syft (SBOM, CycloneDX)
+        uses: anchore/sbom-action/download-syft@v0
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COSIGN_EXPERIMENTAL: "1" # required for cosign keyless signing (Rekor transparency log)
+          # Homebrew tap bump target -- see .goreleaser.yaml's homebrew_casks block and its
+          # inline "ACTION ITEM" comment: these must be configured (repo variable + secret)
+          # before this step can actually publish to a tap; until then GoReleaser's homebrew
+          # step fails without affecting the binaries/SBOM/checksums/GitHub Release already
+          # published earlier in the same run.
+          HOMEBREW_TAP_OWNER: ${{ vars.HOMEBREW_TAP_OWNER }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+  # [REF] Deployment Strategy -- "Post-release validation (CLI-equivalent smoke test)": installs
+  # the freshly tagged binary via each distribution channel on a clean environment and runs
+  # bm save/find/share against a throwaway store. Advisory gate (post-deploy monitoring
+  # category per the gate taxonomy) -- failure surfaces loudly but does not auto-rollback or
+  # auto-republish; a human applies the rollback contract in feature-delta.md's Deployment
+  # Strategy section (tap formula revert / mark GitHub Release deprecated / pin go install to
+  # previous tag).
+  post-release-smoke-test:
+    name: Post-release smoke test (${{ matrix.os }}, ${{ matrix.channel }})
+    needs: [goreleaser]
+    continue-on-error: true # advisory gate, not blocking
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            channel: go-install
+          - os: macos-latest
+            channel: go-install
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # go-install channel: exercised directly in CI (no external Homebrew tap dependency).
+      # Homebrew-tap and raw-binary-download channels are not independently smoke-tested here
+      # because they depend on the Homebrew tap bump (external repo, credentials not
+      # provisioned yet -- see goreleaser job comment) and GitHub Release asset availability
+      # timing; tracked as a follow-up once the tap is live, not silently assumed covered.
+      #
+      # ACTION ITEM (documented gap, not silently papered over): go.mod currently declares
+      # `module bookmark-cli` -- not a fetchable `github.com/<org>/<repo>` import path -- so
+      # this step will fail until the module path is updated to the project's real GitHub
+      # location. That rename is an application-code decision (go.mod + all internal import
+      # rewrites), out of scope for CI/CD authoring; flagged here rather than guessing an org
+      # name.
+      - name: go install the freshly tagged binary
+        run: go install github.com/${{ github.repository }}/cmd/bm@${{ github.ref_name }}
+      - name: Smoke test -- bm save / bm find / bm share against a throwaway store
+        run: |
+          set -euo pipefail
+          BM_DATA_DIR="$(mktemp -d)"
+          export BM_DATA_DIR
+          SAVE_OUTPUT="$(bm save https://example.com/smoke-test --tag smoke)"
+          echo "${SAVE_OUTPUT}"
+          BOOKMARK_ID="$(echo "${SAVE_OUTPUT}" | sed -n 's/^Saved \[\([^]]*\)\].*/\1/p')"
+          if [ -z "${BOOKMARK_ID}" ]; then
+            echo "::error::could not parse bookmark ID from 'bm save' output -- smoke test cannot verify find/share"
+            exit 1
+          fi
+          bm find smoke-test
+          bm share "${BOOKMARK_ID}"
