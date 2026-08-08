@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"bookmark-cli/internal/core"
 )
@@ -12,30 +13,12 @@ func planSaveOrFail(url, tag string, existing []core.Record) core.SavePlan {
 	return core.PlanSave(url, tag, existing)
 }
 
-// rankOrFail is the walking-skeleton-minimal candidate filter for `bm find`: a match requires
-// every whitespace-separated query term to appear (case-insensitive) in the record's URL or tag.
-// This is deliberately thin -- typo-tolerant ranking (US-02) and closest-tag suggestions (US-06)
-// are core.RankMatches' responsibility, implemented and wired in step 02-01.
+// rankOrFail delegates to the pure core ranking engine (ADR-006): typo-tolerant matching (US-02)
+// and closest-tag suggestion on no-match (US-06) both live in core.RankMatches, implemented in
+// step 02-01. This shell function exists only to keep the find-command call site symmetric with
+// planSaveOrFail/formatOrFail.
 func rankOrFail(query string, candidates []core.Record) core.RankedMatches {
-	terms := strings.Fields(strings.ToLower(query))
-
-	var matches []core.RankedMatch
-	for _, candidate := range candidates {
-		if containsAllTerms(candidate, terms) {
-			matches = append(matches, core.RankedMatch{Record: candidate, Score: 1})
-		}
-	}
-	return core.RankedMatches{Matches: matches}
-}
-
-func containsAllTerms(candidate core.Record, terms []string) bool {
-	haystack := strings.ToLower(candidate.URL + " " + candidate.Tag)
-	for _, term := range terms {
-		if !strings.Contains(haystack, term) {
-			return false
-		}
-	}
-	return true
+	return core.RankMatches(query, candidates)
 }
 
 // formatOrFail is the walking-skeleton-minimal share-snippet formatter. Exact-fidelity formatting
@@ -94,10 +77,23 @@ func renderFindResult(matches core.RankedMatches) string {
 	lines := make([]string, 0, len(matches.Matches))
 	for _, m := range matches.Matches {
 		if m.Record.Tag == "" {
-			lines = append(lines, fmt.Sprintf("[%s] %s", m.Record.ID, m.Record.URL))
+			lines = append(lines, fmt.Sprintf("[%s] %s -- %s", m.Record.ID, m.Record.URL, savedAgo(m.Record.SavedAt)))
 		} else {
-			lines = append(lines, fmt.Sprintf("[%s] %s (tag: %s)", m.Record.ID, m.Record.URL, m.Record.Tag))
+			lines = append(lines, fmt.Sprintf("[%s] %s (tag: %s) -- %s", m.Record.ID, m.Record.URL, m.Record.Tag, savedAgo(m.Record.SavedAt)))
 		}
 	}
 	return strings.Join(lines, "\n") + "\n"
+}
+
+// savedAgo renders the "saved N days ago" metadata (US-02 AC) from a record's saved timestamp.
+// A record saved less than a day ago reads "saved today" rather than "saved 0 days ago".
+func savedAgo(savedAt time.Time) string {
+	days := int(time.Since(savedAt).Hours() / 24)
+	if days <= 0 {
+		return "saved today"
+	}
+	if days == 1 {
+		return "saved 1 day ago"
+	}
+	return fmt.Sprintf("saved %d days ago", days)
 }

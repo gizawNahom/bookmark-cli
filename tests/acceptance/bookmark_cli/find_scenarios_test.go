@@ -21,7 +21,6 @@ import (
 //	When she runs "bm find k8s failover"
 //	Then she sees the matching link with its bookmark id, tag, and "saved 12 days ago"
 func TestFind_ByTagAndKeyword_ShowsMatchWithMetadata(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t).WithExistingStore(Bookmark{URL: "https://kube.io/docs/failover", Tag: "k8s"})
 
 	result := cli.Find("k8s failover")
@@ -39,7 +38,6 @@ func TestFind_ByTagAndKeyword_ShowsMatchWithMetadata(t *testing.T) {
 //	When he runs "bm find failover"
 //	Then he sees the matching link in the results
 func TestFind_ByKeywordAlone_ShowsMatch(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t).WithExistingStore(Bookmark{URL: "https://redis.io/failover-postmortem", Tag: ""})
 
 	result := cli.Find("failover")
@@ -55,7 +53,6 @@ func TestFind_ByKeywordAlone_ShowsMatch(t *testing.T) {
 //	When he runs "bm find terrafrom" (typo)
 //	Then he still sees the Terraform doc ranked in the results
 func TestFind_NearMissTypo_StillSurfacesMatch(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t).WithExistingStore(Bookmark{URL: "https://terraform.io/provider-gotcha", Tag: "terraform"})
 
 	result := cli.Find("terrafrom")
@@ -72,7 +69,6 @@ func TestFind_NearMissTypo_StillSurfacesMatch(t *testing.T) {
 //	When she runs "bm find k8s"
 //	Then she sees all 3 matches ranked by relevance
 func TestFind_MultipleMatches_RankedNotForcedToOne(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t).WithExistingStore(
 		Bookmark{URL: "https://kube.io/docs/failover", Tag: "k8s"},
 		Bookmark{URL: "https://kube.io/docs/networking", Tag: "k8s"},

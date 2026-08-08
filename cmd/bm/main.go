@@ -223,11 +223,12 @@ func newFindCmd() *cobra.Command {
 				if err := comp.store.Probe(); err != nil {
 					return fmt.Errorf("health.startup.refused: %w", err)
 				}
-				results, err := comp.store.Search(joinArgs(args))
+				query := joinArgs(args)
+				results, err := comp.store.Search(query)
 				if err != nil {
 					return err
 				}
-				matches := rankOrFail(joinArgs(args), results)
+				matches := rankOrFail(query, results)
 				_ = comp.usageLog.Record(ports.UsageEvent{Event: "bm.find", ResultCount: len(matches.Matches)})
 				fmt.Fprint(cmd.OutOrStdout(), renderFindResult(matches))
 				return nil
