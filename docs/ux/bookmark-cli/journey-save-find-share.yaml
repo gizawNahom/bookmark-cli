@@ -1,0 +1,138 @@
+schema_version: 1
+
+journey:
+  name: "Save, Locate, and Share a Technical Reference Link"
+  goal: >
+    Capture a technical reference link without leaving the terminal, retrieve
+    it later by keyword or tag, and hand it to a teammate with zero install
+    friction on their end.
+  persona: "PERSONA-TERMINAL-INFRA-ENG"
+  jobs: ["JTBD-CAPTURE", "JTBD-LOCATE", "JTBD-SHARE"]
+
+  emotional_arc:
+    start: "Focused, mid-task, mildly anxious about losing the link if not captured now"
+    middle: "Anxious/time-pressured while searching (often mid-incident), resolving to confident once a match appears"
+    end: "Proud/relieved once the teammate confirms zero-install receipt"
+
+steps:
+  - id: 1
+    name: "Capture"
+    command: "bm save <url> --tag <tag>"
+
+    tui_mockup: |
+      +-- Step 1: Save a link -------------------------------------------------+
+      | $ bm save https://kube.io/docs/failover --tag k8s                      |
+      | Saved [a1b2] "https://kube.io/docs/failover" (tag: k8s)                |
+      +--------------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "bookmark_id"
+        source: "local bookmark store (record created at save time)"
+        displayed_as: "${bookmark_id}"
+        consumers: ["Step 2 (Locate result)", "Step 3 (Share argument + output)"]
+      - name: "tag"
+        source: "user input at save time, normalized"
+        displayed_as: "${tag}"
+        consumers: ["Step 2 (Locate result)", "Step 3 (Share output)"]
+
+    emotional_state:
+      entry: "Focused, mildly anxious"
+      exit: "Quick relief — one command, back to work"
+
+    integration_checkpoint: |
+      ${bookmark_id} generated here must be the exact ID surfaced by `bm find`
+      and accepted by `bm share`.
+
+    failure_modes:
+      - "Duplicate URL already saved — must not silently create a second entry"
+      - "Malformed/unreachable-looking URL — must not save without feedback"
+      - "Tag flag syntax not discovered (DISCOVER Phase 3: Aisha task-3, ~20s vs <10s target)"
+
+    gherkin: |
+      Scenario: Link is saved without leaving the terminal
+        Given Nadia Petrova is working in her terminal
+        When she runs "bm save https://kube.io/docs/failover --tag k8s"
+        Then she sees a confirmation with a bookmark id and the tag "k8s"
+        And shared artifact "${bookmark_id}" matches the local bookmark store
+
+  - id: 2
+    name: "Locate"
+    command: "bm find <query>"
+
+    tui_mockup: |
+      +-- Step 2: Find a saved link --------------------------------------------+
+      | $ bm find k8s failover                                                  |
+      | [a1b2] https://kube.io/docs/failover  (tag: k8s, saved 12 days ago)     |
+      +--------------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "match_list"
+        source: "local bookmark store, filtered/ranked against Step 1 records"
+        displayed_as: "${match_list}"
+        consumers: ["Step 3 (Share argument selection)"]
+
+    emotional_state:
+      entry: "Anxious, often time-pressured (mid-incident)"
+      exit: "Confident — match found and unambiguous"
+
+    integration_checkpoint: |
+      Every record returned must reference the same ${bookmark_id} assigned in
+      Step 1 — no drift between save-time ID and find-time ID.
+
+    failure_modes:
+      - "No match found — must guide the user, not return a bare empty result"
+      - "Ambiguous match (multiple close hits) — must present ranked results, not force a single guess"
+
+    gherkin: |
+      Scenario: A previously saved link is found by tag
+        Given Priti Desai saved a link 12 days ago tagged "k8s"
+        When she runs "bm find k8s failover"
+        Then she sees the matching link with its bookmark id and tag
+        And shared artifact "${bookmark_id}" matches the id from the save step
+
+  - id: 3
+    name: "Share"
+    command: "bm share <id>"
+
+    tui_mockup: |
+      +-- Step 3: Share a link --------------------------------------------------+
+      | $ bm share a1b2                                                          |
+      | Share this with your team:                                               |
+      | https://kube.io/docs/failover  (via bm, tag: k8s)                        |
+      +--------------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "share_snippet"
+        source: "generated at share time from the resolved bookmark record"
+        displayed_as: "${share_snippet}"
+        consumers: ["Recipient's terminal/chat — zero install required"]
+
+    emotional_state:
+      entry: "Confident — has the right link"
+      exit: "Proud/relieved — teammate received it with zero friction"
+
+    integration_checkpoint: |
+      The URL and tag in the share snippet must exactly match the record shown
+      in Step 2 — no re-fetch or transformation that could drift from source.
+
+    failure_modes:
+      - "Invalid/unknown ${bookmark_id} (typo, deleted record) — must fail with an actionable message"
+      - "Any recipient-side install requirement — hard constraint violation (Aisha, DISCOVER #8)"
+
+    gherkin: |
+      Scenario: A curated link is shared with zero install for the recipient
+        Given Aisha Rahman has found bookmark "a1b2" for the failover doc
+        When she runs "bm share a1b2"
+        Then she sees a copy-paste-ready snippet with the URL and tag
+        And her teammate can use the snippet immediately with no install step
+
+integration_validation:
+  shared_artifact_consistency:
+    - artifact: "bookmark_id"
+      must_match_across: [1, 2, 3]
+      failure_message: "Bookmark ID must be identical across save, find, and share — any drift breaks the journey"
+
+changelog:
+  - date: "2026-08-07"
+    feature: "bookmark-cli"
+    change: "Initial DISCUSS-wave journey covering the walking-skeleton scope (save/find/share), grounded in DISCOVER solution-testing evidence"
