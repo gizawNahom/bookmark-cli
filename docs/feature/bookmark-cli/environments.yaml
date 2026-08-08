@@ -44,10 +44,19 @@ coexistence_matrix:
     note: "bm has no daemon, no hooks, no shell-rc mutation, and no shared external state with other tools. Nothing to enumerate here beyond the entries above; recorded explicitly so the empty matrix isn't mistaken for an oversight."
 
 platform_coverage:
-  macOS: [13.x, 14.x, 15.x]
+  # Amendment (Final Wave Review Gate finding HIGH-1, resolved by narrowing the contract to match
+  # actual CI capability rather than leaving an untested claim): macOS: [13.x, 14.x, 15.x] was the
+  # original *supported* claim, but CI only exercises macos-latest (currently 14.x/15.x-class
+  # runners; GitHub rotates the label). 13.x is not independently verified pre-release. Go's
+  # standard-library/runtime ABI stability across recent macOS point releases is the engineering
+  # basis for the (unverified) 13.x claim; this is a judgment call, not a tested guarantee.
+  macOS: [13.x (unverified in CI, best-effort), 14.x (CI-verified via macos-latest), 15.x (CI-verified via macos-latest)]
   Linux: [Ubuntu 22.04, Ubuntu 24.04]
   WSL: [WSL2]
   CI: [GitHub Actions ubuntu-latest, macos-latest]
+  # Backlog: expand the CI matrix to pin an explicit macos-13 runner if pilot telemetry shows
+  # meaningful macOS 13.x usage — not done now to avoid fabricating CI complexity ahead of demand
+  # (same "no fabricated complexity" principle already applied to the coexistence_matrix above).
 
 deployment_assumptions:
   - "Installation MUST be idempotent (re-running `brew install`/`go install` or re-downloading the release binary is safe; no in-place state migration triggered by install itself)"

@@ -632,7 +632,16 @@ the release pipeline.
 | Local pre-push | `git push` | Full unit suite, `go-arch-lint` package-boundary check, AST structural probe-presence check (ADR-007 layer 2) | Blocking (developer) |
 | PR / commit stage | `pull_request`, `push: [main]` | `go build ./...`, full unit suite + coverage (`>= 80%` per production-readiness default), `golangci-lint` (incl. `staticcheck`), `gosec` (SAST), `govulncheck` (SCA), `gitleaks` (secrets), `go-arch-lint` (package boundary, ADR-007), `go/ast` structural probe-presence check | Blocking (PR merge / CI) |
 | Fault-injection (behavioral) | `pull_request`, `push: [main]` | `go test ./... -tags=faultinjection` — exercises read-only FS, WAL-unsupported FS, disk-full, backup-dir-unwritable scenarios against real adapters (ADR-007 layer 3), including the self-application test that `Probe()` is actually invoked at startup | Blocking (CI) — this is ADR-007's own CI harness, not new scope invented here |
-| Release | `push: tags: ['v*']` | Pre-release mutation testing gate (below) → GoReleaser: cross-compile (linux/macos/windows × amd64/arm64), SBOM (`syft`, CycloneDX), checksum + optional `cosign` signing, GitHub Release publish, Homebrew tap formula bump | Blocking (release publish only — does not block per-feature merges to `main`) |
+| Release | `push: tags: ['v*']` | Pre-release mutation testing gate (below) → GoReleaser: cross-compile (linux/macos × amd64/arm64), SBOM (`syft`, CycloneDX), checksum + optional `cosign` signing, GitHub Release publish, Homebrew tap formula bump | Blocking (release publish only — does not block per-feature merges to `main`) |
+
+**Amendment (Final Wave Review Gate finding HIGH-2, resolved by narrowing scope, not by adding CI)**:
+`windows` was removed from the GoReleaser cross-compile matrix. `environments.yaml`'s test
+platforms (`linux, macos, wsl`) already excluded Windows natively — the persona is
+Linux/macOS/WSL2-terminal-first (`brief.md` Section 1 "Ecosystem fit"), and WSL2 already gives
+Windows users a supported path without a native Windows binary. Building Windows artifacts with
+zero test coverage (the original mismatch the reviewer flagged) is a worse outcome than not
+shipping them for v1 — native Windows support is deferred to a future release if pilot demand
+appears, tracked as a backlog item rather than silently built-untested.
 
 No acceptance/capacity/production stages in the live-service sense apply (no deployment target,
 no traffic to shift) — the CLI-equivalent of "production stage" is the release artifact itself
@@ -744,6 +753,17 @@ mutation coverage matters most at the release boundary, not on every commit.
   first release establishes the baseline, subsequent releases compare against it. This is
   recorded as an open item for whoever runs the first release to close, not silently decided
   here without data.
+- **Gate logic for v1.0.0, made explicit (Final Wave Review Gate finding CRITICAL-1)**: the
+  `gremlins` job is **advisory/informational only for the first release** — it publishes its
+  kill-rate report as a pipeline artifact but does NOT fail the release pipeline (`continue-on-error:
+  true` equivalent for this one job only; all other release-gate jobs remain blocking). Rationale:
+  a pass/fail floor requires a baseline that does not yet exist for a greenfield codebase, and
+  inventing an arbitrary floor (e.g. "80%") without evidence would be exactly the kind of
+  undocumented, unjustified number `nw-test-design-mandates`/Core Principle 13 warns against.
+  **Action item for whoever prepares the v1.1.0+ release**: read the v1.0.0 kill-rate report and
+  set an explicit numeric floor (e.g. "no release ships below the v1.0.0 baseline minus 5 points")
+  before the second release's `gremlins` job is made blocking. Until that floor is set, the job
+  stays advisory — this is a deliberate, documented deferral, not an oversight.
 
 ### [REF] Observability Stack
 
@@ -817,3 +837,355 @@ maintainer-flagged uncertainty) — **none fired**: GitHub Actions + Homebrew is
 well-understood setup for this project size, so per-wave review is skipped per the `nw-devops`
 skill's default. The mandatory consolidated review (Eclipse + Architect + Forge + Sentinel) fires
 at the end of DISTILL against the full `feature-delta.md`.
+
+---
+
+## Wave: DISTILL
+
+Facilitator: Quinn (nw-acceptance-designer) | Date: 2026-08-07 | Density mode: lean
+(Tier-1 `[REF]` always emitted; Tier-2 `[WHY]`/`[HOW]` only where a trigger fires)
+
+### [REF] Wave-Decision Reconciliation (HARD GATE)
+
+Read `discuss/wave-decisions.md`, `design/wave-decisions.md`, `devops/wave-decisions.md` in full
+before any scenario was written. Checked every DISCUSS decision against DESIGN and DEVOPS for
+contradiction (email-vs-in-app, REST-vs-gRPC-class conflicts). **Zero contradictions found** —
+DESIGN's Go/SQLite/Cobra/Plan-value/Probe choices and DEVOPS's GitHub-Actions/trunk-based/
+pre-release-mutation/local-telemetry choices are each consistent extensions of DISCUSS's stories,
+not overrides. **Reconciliation passed — 0 contradictions.**
+
+### [REF] Language + Infrastructure Policy + Port Bootstrap
+
+- `[lang-mode] Go` — detected via `go.mod` bootstrap this wave (greenfield: no `go.mod` existed
+  before DISTILL; module `bookmark-cli`, Go 1.25, `go get github.com/spf13/cobra`,
+  `go get modernc.org/sqlite` fetched successfully — network available, no offline-mode fallback
+  needed).
+- `[policy-mode]` — `docs/architecture/atdd-infrastructure-policy.md` did not exist; bootstrapped
+  this wave (`--policy=inherit` default, file was absent → treated as "create + populate", not a
+  rewrite). All 3 driving/driven-internal ports in scope populated in the same pass (no
+  driven-external ports exist in this project, so that section is explicitly empty, not omitted).
+- `[port-mode]` — `tests/common/state_delta.go` did not exist; bootstrapped this wave (Go binding
+  of the Polyglot Adapter Matrix's state-delta port: `AssertStateDelta`, `SetTo`, `Unchanged`,
+  `AppendedWith`, `PrependedWith`, `Containing`, `NormalizedTo`, `IdempotentAfter`,
+  `LegacyHealed`). First DISTILL run in this project — per-project apply-if-absent bootstrap,
+  future features in this repo inherit it.
+
+### [REF] Scenario List With Tags
+
+25 scenarios (1 walking skeleton + 24 milestone/adapter). Go idiom per the Polyglot Adapter
+Matrix: `*_scenarios_test.go` files, `testing` package, `t.Skip("pending")` one-at-a-time marker
+(all scenarios skip-marked except the walking skeleton, per Mandate 5).
+
+| Scenario (Go test name) | File | Story | Tags |
+|---|---|---|---|
+| `TestWalkingSkeleton_SaveFindShare` | `walking_skeleton_test.go` | US-01/02/03 | `@walking_skeleton @driving_port @us-01 @us-02 @us-03` |
+| `TestSave_WithoutTag_StillSavesAndRetrievable` | `save_scenarios_test.go` | US-01 | `@us-01` |
+| `TestSave_ExactDuplicate_DetectedNotDuplicated` | `save_scenarios_test.go` | US-01/US-05 | `@us-01 @us-05 @error` |
+| `TestSave_MalformedURL_RejectedWithClearMessage` | `save_scenarios_test.go` | US-05 | `@us-05 @error` |
+| `TestSave_SameURLNewTag_OffersTagUpdateNotDuplicate` | `save_scenarios_test.go` | US-05 | `@us-05` |
+| `TestSave_URLWithQueryParams_SavesWithFullFidelity` | `save_scenarios_test.go` | US-05 | `@us-05` |
+| `TestSave_WithoutTag_ShowsDiscoverabilityHint` | `save_scenarios_test.go` | US-04 | `@us-04` |
+| `TestSaveHelp_ShowsConcreteExample` | `save_scenarios_test.go` | US-04 | `@us-04` |
+| `TestSave_NearMissFlag_SuggestsDidYouMean` | `save_scenarios_test.go` | US-04 | `@us-04 @error` |
+| `TestSave_ConfirmationIsResponsive` | `save_scenarios_test.go` | US-01 | `@us-01` |
+| `TestFind_ByTagAndKeyword_ShowsMatchWithMetadata` | `find_scenarios_test.go` | US-02 | `@us-02` |
+| `TestFind_ByKeywordAlone_ShowsMatch` | `find_scenarios_test.go` | US-02 | `@us-02` |
+| `TestFind_NearMissTypo_StillSurfacesMatch` | `find_scenarios_test.go` | US-02 | `@us-02 @property` |
+| `TestFind_MultipleMatches_RankedNotForcedToOne` | `find_scenarios_test.go` | US-02 | `@us-02` |
+| `TestFind_NoMatch_SuggestsClosestTag` | `find_scenarios_test.go` | US-06 | `@us-06 @error` |
+| `TestFind_NoMatch_NoCloseTag_ShowsCleanMessage` | `find_scenarios_test.go` | US-06 | `@us-06 @error` |
+| `TestFind_EmptyStore_ShowsOnboardingMessage` | `find_scenarios_test.go` | US-06 | `@us-06 @error` |
+| `TestFind_NoMatchResponse_IsResponsive` | `find_scenarios_test.go` | US-06 | `@us-06` |
+| `TestShare_CuratedLink_ProducesZeroInstallSnippet` | `share_scenarios_test.go` | US-03 | `@us-03` |
+| `TestShare_SnippetMatchesFindRecordExactly` | `share_scenarios_test.go` | US-03 | `@us-03` |
+| `TestShare_LinkWithoutTag_ProducesValidSnippet` | `share_scenarios_test.go` | US-03 | `@us-03` |
+| `TestShare_UnknownID_FailsClearly` | `share_scenarios_test.go` | US-03 | `@us-03 @error` |
+| `TestSave_CreatesBackupSnapshot` | `adapter_integration_scenarios_test.go` | US-01/NFR | `@real-io @adapter-integration @us-01` |
+| `TestSave_WithTelemetryEnabled_RecordsUsageEvent` | `adapter_integration_scenarios_test.go` | DEVOPS telemetry | `@real-io @adapter-integration` |
+| `TestSave_DegradedFilesystem_RefusesCleanly` | `adapter_integration_scenarios_test.go` | NFR (ADR-007) | `@real-io @adapter-integration @error @us-07-nfr` |
+
+**Error/edge scenario count: 11/25 = 44%** (malformed URL, near-miss flag, all 3 no-match/empty-
+store scenarios, unknown share id, degraded-filesystem — exceeds the 40% target).
+
+### [REF] Walking Skeleton Strategy
+
+Per the Architecture of Reference (retired per-feature Strategy A/B/C/D choice): this project has
+**zero driven-external/non-deterministic ports** (confirmed `brief.md` Section 0/17, zero network
+calls anywhere). Every driven port is driving (CLI, real adapter) or driven-internal (SQLite
+store, file backup, usage log — all real adapters per the bootstrapped
+`atdd-infrastructure-policy.md`). Consequently **every scenario in this feature runs at the
+subprocess/FS acceptance layer with 100% real adapters** — there is no in-memory-double layer to
+choose between. Walking skeleton scenario: `TestWalkingSkeleton_SaveFindShare`, invoking the real
+`bm` binary via subprocess (Pillar 3), asserting on CLI-observable output only (traditional
+assertions, per the Layered Test Discipline table's WS row).
+
+### [REF] Adapter Coverage Table (Mandate 6)
+
+| Adapter | `@real-io` scenario | Covered by |
+|---|---|---|
+| `SQLiteBookmarkStore` (`BookmarkReader`+`BookmarkWriter`) | YES | Every save/find/share scenario — real SQLite file under `t.TempDir()` |
+| `FileBackupAdapter` (`BackupService`) | YES | `TestSave_CreatesBackupSnapshot` |
+| `FileUsageLogAdapter` (`UsageLogger`, telemetry-enabled) | YES | `TestSave_WithTelemetryEnabled_RecordsUsageEvent` |
+| `NoOpUsageLogAdapter` (`UsageLogger`, telemetry-disabled) | N/A — real trivial adapter, no business logic to exercise with real I/O; implicitly exercised by every scenario that does not call `WithTelemetryEnabled()` | default composition-root path |
+
+Zero "NO — MISSING" rows.
+
+### [REF] Scaffolds (Mandate 7 — RED-Ready)
+
+All scaffolds compile (`go build ./...` exit 0) and panic with `"... -- RED scaffold"` messages
+(Go's assertion-class RED marker, per the skill's language mapping). `cmd/bm/main.go`'s composition
+root recovers each command's panic into a controlled non-zero-exit CLI failure so acceptance
+assertions fail on observable output, not a crash trace.
+
+| Scaffold file | Scaffolds |
+|---|---|
+| `internal/core/types.go` | `Record`, `ValidationResult`, `NormalizedTag`, `DuplicateVerdict`, `SavePlan`(+`SavePlanKind`), `RankedMatch(es)`, `ShareSnippet` — types only, no panics |
+| `internal/core/validator.go` | `ValidateURL` |
+| `internal/core/normalizer.go` | `NormalizeTag` |
+| `internal/core/duplicate.go` | `CheckDuplicate` |
+| `internal/core/planner.go` | `PlanSave` (ADR-006 Plan-value pattern) |
+| `internal/core/matcher.go` | `RankMatches` |
+| `internal/core/formatter.go` | `FormatSnippet` |
+| `internal/ports/ports.go` | `Prober`, `BookmarkReader`, `BookmarkWriter`, `BackupService`, `UsageLogger` — interfaces only, no panics |
+| `internal/adapters/sqlitestore/store.go` | `Store.Probe/FindByID/Search/All/Execute` |
+| `internal/adapters/backup/filebackup.go` | `Adapter.Probe/Snapshot` |
+| `internal/adapters/usagelog/usagelog.go` | `FileUsageLogAdapter.Probe/Record` (real, not scaffolded: `NoOpUsageLogAdapter` — trivial, no logic to defer) |
+| `cmd/bm/main.go` | Cobra command wiring (`save`/`find`/`share`/`stats`), composition root, panic-recovery boundary — not itself scaffolded, delegates to the above |
+| `cmd/bm/render.go` | `renderSaveConfirmation`, `renderFindResult` (delegate to core scaffolds) |
+
+### [REF] Test Placement
+
+`tests/acceptance/bookmark_cli/` (Go idiom: acceptance tests live under a top-level `tests/`
+directory outside `internal/`, since `internal/` packages restrict import visibility and
+subprocess-based acceptance tests only need the built binary, not internal package access).
+`tests/common/state_delta.go` hosts the project-local, per-project state-delta port (inherited by
+future features in this repo). No precedent existed in this greenfield repo; this layout follows
+the `nw-distill` skill's default `tests/{test-type-path}/{feature-id}/acceptance/` convention
+adapted to Go's `testing`-package idiom (no separate `.feature` file — the Go test function body
++ its Given/When/Then doc comment together are the SSOT, per the Polyglot Adapter Matrix's Go row
+which specifies `*_scenarios_test.go`, not a Gherkin `.feature` file).
+
+### [REF] Assertion Convention — testify (require/assert)
+
+**Standing convention for this project, established this session (coordinator directive,
+2026-08-08), applies to every DISTILL run in `bookmark-cli` going forward** — not a one-off
+choice for this feature only.
+
+- **Library**: `github.com/stretchr/testify` (`require` + `assert` sub-packages). Added to
+  `go.mod` (`go get github.com/stretchr/testify@latest` — resolved `v1.11.1`; `go mod tidy` also
+  pulled the sub-package-only imports `require`/`assert` into `go.sum`, plus their transitive
+  deps `davecgh/go-spew`, `pmezard/go-difflib`, `gopkg.in/yaml.v3`).
+- **Convention**: `require.*` for a precondition/step whose failure makes the rest of the
+  scenario meaningless to continue (e.g. `require.Equal(t, 0, result.ExitCode, ...)` before
+  inspecting `result.Stdout` content — a non-zero exit means the stdout assertions that follow
+  would just be testing an error message, not the intended behavior). `assert.*` for independent,
+  collectible outcome checks within a single `Then` (e.g. multiple `assert.Contains(...)` calls
+  checking different substrings of the same confirmation line — each one is worth reporting even
+  if an earlier one already failed, since they diagnose different aspects of the same output).
+- **Applied to all 7 scenario/harness files** in `tests/acceptance/bookmark_cli/`:
+  `walking_skeleton_test.go`, `save_scenarios_test.go`, `find_scenarios_test.go`,
+  `share_scenarios_test.go`, `adapter_integration_scenarios_test.go`, `harness_test.go` (the CLI
+  composition-root harness itself — `require.NoError`/`require.NoError` replace the prior
+  `c.t.Fatalf` calls in `WithReadOnlyDataDir` and `run`), and `domain_types_test.go` (no change
+  needed — pure type declarations, zero assertions, explicitly noted as N/A in-file rather than
+  silently skipped).
+- **Zero raw `t.Fatalf`/`if`-then-`t.Fatalf` assertion patterns remain** in any scenario or
+  harness file (verified: `grep -n "t\.Fatalf\|c\.t\.Fatalf" tests/acceptance/bookmark_cli/*_test.go`
+  returns no matches). `statedelta.AssertStateDelta` (the project's Mandate-8 state-delta port,
+  `tests/common/state_delta.go`) is unchanged — it is a purpose-built Universe-guard assertion,
+  orthogonal to the general-purpose require/assert convention, and continues to take a
+  `statedelta.TestingT` (a `*testing.T`-compatible minimal interface) directly.
+- **Re-verification of the pre-DELIVER RED gate after the rewrite**: re-ran the full suite once
+  with all `t.Skip(...)` markers temporarily lifted (backed up first, restored after). Same
+  classification as before the rewrite — 24/25 scenarios FAIL with `MISSING_FUNCTIONALITY`
+  (`require.Equal`/`require.NotEqual`/`assert.Contains` etc. firing against the RED-scaffold panic
+  output, not a build or import error), 1 scenario (`TestSaveHelp_ShowsConcreteExample`) passes
+  for the same pre-documented reason (static Cobra `Example:` metadata, not deferred logic — see
+  `distill/red-classification.md` "Note on the help-example scenario"). `go build ./...` and
+  `go vet ./...` both exit 0 throughout. The testify migration is a pure test-assertion-library
+  swap — it changed zero scenario semantics and zero production code. Full detail appended to
+  `distill/red-classification.md` (see "Testify Migration — Re-Verification" section there).
+
+### [REF] Driving Adapter Coverage
+
+All 4 driving-port commands (`bm save`, `bm find`, `bm share`, `bm stats`) are wired in
+`cmd/bm/main.go`. `bm stats` is DEVOPS's new driving port (`kpi-contracts.yaml`) — no dedicated
+acceptance scenario was added for it this wave (no user story in DISCUSS scope owns `bm stats`
+directly; it is telemetry tooling, not a walking-skeleton/Release-1 story) but its RunE is
+scaffolded consistently with the other three so `go build` succeeds and its `--help`/disabled-
+telemetry path (`"telemetry is not enabled..."`) is real, working code, not a scaffold panic —
+flagged here as an intentionally out-of-DISTILL-scope command rather than a silent omission. `bm
+save`, `bm find`, `bm share` are each exercised via subprocess in ≥1 scenario (Driving Adapter
+Verification mandate): exit code, stdout format, and argument handling (`--tag`, near-miss flags,
+positional args) are all asserted.
+
+### [REF] Pre-requisites
+
+- `docs/product/architecture/brief.md` Sections 5/13/14 (component contract shapes, driving/
+  driven ports) — directly drove the `internal/core`/`internal/ports`/`internal/adapters` package
+  layout above.
+- `docs/feature/bookmark-cli/environments.yaml` — `degraded-filesystem` environment directly
+  produced `TestSave_DegradedFilesystem_RefusesCleanly`; `existing-store` environment underlies
+  every scenario using `WithExistingStore(...)`; `clean` environment underlies every scenario
+  using a bare `NewCLI(t)`.
+- `docs/product/kpi-contracts.yaml` — `bm.save`/`bm.find`/`bm.share` event names and privacy
+  contract (no URL/tag content in log payloads) directly produced
+  `TestSave_WithTelemetryEnabled_RecordsUsageEvent`'s assertions.
+- `docs/feature/bookmark-cli/discuss/story-map.md` — US-01→US-06 priority order drove scenario
+  authorship order and the DELIVER-facing one-at-a-time sequencing note in
+  `distill/red-classification.md`.
+
+### [REF] Mandate 8/9/10/11 Application
+
+- **Mandate 8 (Universe-bound assertion, layers 1-3)**: applied to every state-**mutating**
+  scenario (save-path scenarios) via `statedelta.AssertStateDelta` against a CLI-observable
+  Universe (`find.match_count`, built from re-running `bm find` before/after — never an internal
+  SQLite column). Read-only scenarios (find/share) have no mutation to assert a delta on, so they
+  use traditional assertions, consistent with Mandate 8's own scope ("state-mutating" steps only).
+- **Mandate 9 (layer-dependent PBT mode)**: this feature's acceptance layer is subprocess/FS
+  (layer 3) end to end — no in-memory-double layer exists (zero driven-external ports to fake).
+  Per the Layered Test Discipline table, layer 3 is **example-only**; no `@given`/PBT machinery is
+  imported anywhere in `tests/acceptance/`. `TestFind_NearMissTypo_StillSurfacesMatch` is tagged
+  `@property` (fuzzy-match ranking is a universal-invariant AC) but is pinned as a single
+  representative example at this layer, per Mandate 9 — true PBT exploration of the ranking
+  function belongs to DELIVER's unit-layer tests against `core.RankMatches` directly (owned by
+  the crafter, not DISTILL).
+- **Mandate 10 (two-tier acceptance)**: **Tier B NOT added.** Evaluated explicitly: `bm save`/
+  `bm find`/`bm share` are each single-command, single-outcome operations; the closest thing to a
+  "journey" (walking skeleton's save→find→share) is exactly 3 steps but each step's precondition
+  is fully captured by the prior step's *observable output* (the bookmark id), not by a rich,
+  domain-varied input space requiring generative exploration — a single Tier A example already
+  covers the space. No feature journey in this pass meets both Mandate 10 triggers
+  simultaneously (≥3 chained scenarios AND domain-rich input space).
+- **Mandate 11 (integration sad paths stay example-based)**: all `@error`-tagged and
+  `@adapter-integration`-tagged scenarios are named, explicit `Test<Scenario>` functions (no PBT
+  machinery), one example per failure mode, consistent with layer 3 example-only discipline.
+
+### [REF] Mandate-12 Compliance Evidence (SSOT + Zero Duplication)
+
+- **Criterion 1 (domain types module)**: `tests/acceptance/bookmark_cli/domain_types_test.go` —
+  `SaveOutcome`, `StoreState`, `Bookmark`, `FilesystemCondition` typed enums/structs for every
+  domain noun the scenarios use.
+- **Criterion 2 (typed composition parameters)**: the CLI harness's composition-root-equivalent
+  (`harness_test.go`'s `CLI` type) consumes `Bookmark` (not raw positional strings) in
+  `WithExistingStore(...)`; `Save(url, tag string)` keeps `url`/`tag` as plain strings only where
+  no richer domain enum exists yet (both are free-text user input at this layer, not closed-set
+  enums — consistent with Mandate-12's "no raw `str` where a domain enum exists," which does not
+  apply to genuinely open string domains).
+- **Criterion 3 (no business logic in step bodies)**: harness methods (`Save`, `Find`, `Share`,
+  `SaveHelp`, `SaveWithFlag`) are single-purpose delegations to `c.run(...)` (subprocess
+  invocation) — no control flow beyond argument-slice construction. Scenario bodies themselves
+  compose harness calls + `statedelta`/plain assertions; this is the acceptance-layer equivalent
+  of "step methods delegate to composition-root services," adapted to Go's example-based `testing`
+  idiom (no `given`/`when`/`then` decorators exist in Go — the closest equivalent, `t.Run`
+  subtests, was not needed since Pillar-2 chaining is expressed via helper reuse, not nested
+  subtests).
+- **Criterion 4 (step-reuse-ratio, informational)**: 43 total `cli.<Method>(...)` invocations
+  across 7 unique harness methods (`Save`, `Find`, `Share`, `SaveHelp`, `SaveWithFlag`,
+  `BackupDir`, `UsageLogPath`) = **6.14× ratio**. Config-shaped, single-command-per-story feature
+  shape (per the mandate's own natural-ceiling guidance) — no forced ratio-maximization was
+  applied; Gherkin-equivalent doc-comment readability (Pillar 1) was preserved throughout.
+
+### [REF] Pre-DELIVER Fail-for-the-Right-Reason Gate
+
+Full detail: `docs/feature/bookmark-cli/distill/red-classification.md`. Summary: `go build ./...`
+and `go vet ./...` both pass (zero BROKEN-class failures). 24/25 scenarios classify as clean
+MISSING_FUNCTIONALITY; 1 (`TestSaveHelp_ShowsConcreteExample`) is an intentional non-scaffolded
+exception (static CLI help metadata, not business logic). Two WRONG_ASSERTION bugs were found and
+fixed during this gate run (both test-only fixes, zero production-code changes) — see the "Note on
+the help-example scenario" and "Assertion bugs found and fixed" sections there. All scenarios
+except the walking skeleton are `t.Skip`-marked for DELIVER's one-at-a-time cycle (Mandate 5); the
+walking skeleton is the single active RED scenario at hand-off.
+
+### [REF] DISTILL Wave Handoff Status
+
+**Pending Final Wave Review Gate** (four reviewers dispatched next, per `application` deliverable-
+type routing — no plugin/skill reviewer needed). Self-review checklist (Dimension 9 + Mandate 7)
+below.
+
+- [x] 1. WS strategy declared (Architecture of Reference — no per-feature A/B/C/D choice; 100%
+      real adapters, no in-memory layer)
+- [x] 2. WS scenario tagged `@walking_skeleton @driving_port`
+- [x] 3. Every driven adapter has ≥1 `@real-io` scenario (adapter coverage table above)
+- [x] 4. N/A — no in-memory doubles used anywhere in this feature (see Mandate 9 note)
+- [x] 5. N/A — no container preference applicable (embedded SQLite, no external service)
+- [x] 6. Mandate 7 — all production modules imported by tests have scaffold files
+- [x] 7. Mandate 7 — all scaffolds carry a `SCAFFOLD: true`/`-- RED scaffold` marker
+- [x] 8. Mandate 7 — all scaffold methods raise/panic (Go's assertion-class marker), not a
+      generic `errors.New("todo")`
+- [x] 9. Mandate 7 — tests are RED (not BROKEN) against scaffolds — verified in red-classification.md
+- [x] 10. Driving Adapter — `bm save`/`bm find`/`bm share` each exercised via subprocess with
+      exit-code + stdout-format + argument-handling assertions
+- [x] 11. F-001 — every driven adapter has ≥1 `@real-io @adapter-integration` scenario
+- [x] 12. F-002 — N/A (Go idiom has no `capsys`-equivalent step-scoping issue; stdout/stderr
+      captured directly on the `exec.Cmd`, same scope throughout the harness method)
+- [x] 13. F-005 — scenario files import ONLY the test harness + `tests/common/statedelta`; zero
+      imports from `internal/adapters/*` (verified: `grep -L "internal/adapters" tests/acceptance/bookmark_cli/*_test.go` matches all scenario files, i.e. none import adapters directly)
+- [x] 14. F-004 — timing assertions use a 2s budget (not a flaky sub-200ms figure)
+- [x] 15. F-003 — N/A (Go has no import-time `sys.path` manipulation equivalent)
+
+### [REF] Final Wave Review Gate Outcome
+
+Four reviewers dispatched in parallel (Haiku) against the full `feature-delta.md`, per `application`
+deliverable-type routing (no `@nw-plugin-validator`/`@nw-skill-reviewer` — confirmed N/A).
+
+| Reviewer | Wave reviewed | Verdict | Blockers | Critical | High | Medium | Low |
+|---|---|---|---|---|---|---|---|
+| Eclipse (`nw-product-owner-reviewer`) | DISCUSS | **approved** | 0 | 0 | 0 | 0 | 0 |
+| Architect (`nw-solution-architect-reviewer`) | DESIGN | **approved** | 0 | 0 | 0 | 0 | 0 |
+| Forge (`nw-platform-architect-reviewer`) | DEVOPS | **conditionally_approved** | 0 | 1 | 2 | 5 | 2 |
+| Sentinel (`nw-acceptance-designer-reviewer`) | DISTILL | **approved** | 0 | 0 | 0 | 0 | 0 |
+
+**Cross-wave consistency check**: no contradictions surfaced between reviewers — Eclipse/
+Architect/Sentinel's independent approvals are mutually consistent (no reviewer's approval
+depended on a claim another reviewer's findings undermined).
+
+**Forge's findings — resolved or accepted-with-conditions** (blocker_count was 0 throughout, so
+per the gate rule "zero blockers, zero high (or accepted-with-conditions)" this satisfies handoff
+without a `needs_revision` re-dispatch cycle; narrow, scoped edits applied directly, consistent
+with the precedent already set in `design/wave-decisions.md`'s own peer-review remediation):
+
+| ID | Finding | Resolution |
+|---|---|---|
+| CRITICAL-1 | Mutation-testing release gate had no pass/fail criterion | **Resolved this session** — `gremlins` job made explicitly advisory-only for v1.0.0 (publishes report, does not block release); action item recorded for whoever prepares v1.1.0+ to set a numeric floor off the v1.0.0 baseline. See DEVOPS "Mutation Testing Strategy" section, amended above. |
+| HIGH-1 | `environments.yaml` claimed macOS 13.x/14.x/15.x coverage but CI only runs `macos-latest` | **Resolved this session** — `environments.yaml` `platform_coverage` narrowed to distinguish CI-verified (14.x/15.x via `macos-latest`) from unverified-best-effort (13.x), with an explicit backlog note rather than a silent overclaim. |
+| HIGH-2 | Windows release binaries built (GoReleaser cross-compile) but zero Windows test environment exists | **Resolved this session** — `windows` removed from the GoReleaser cross-compile matrix for v1; WSL2 already gives Windows users a supported, tested path. Native Windows build deferred to backlog, not shipped untested. See DEVOPS "CI/CD Pipeline Outline" table, amended above. |
+| MEDIUM-1 | AST probe-presence tooling's coverage of the new `FileUsageLogAdapter` unverified | **Accepted as DELIVER-scope action item** — DELIVER's crafter must confirm the `go/ast` structural check (ADR-007 layer 2) fires on `FileUsageLogAdapter` before considering that adapter GREEN; not a DISTILL-scope gap (DISTILL's own `TestSave_WithTelemetryEnabled_RecordsUsageEvent` already exercises this adapter with real I/O). |
+| MEDIUM-2 | Fault-injection harness's auto-coverage of new telemetry adapters unverified | **Accepted as DELIVER-scope action item** — same disposition as MEDIUM-1; DELIVER's fault-injection CI job (`-tags=faultinjection`) must be confirmed to enumerate `FileUsageLogAdapter` once implemented. |
+| MEDIUM-3 | Telemetry privacy constraint (no URL/tag in event payloads) not CI-enforced | **Accepted as DELIVER-scope action item** — `TestSave_WithTelemetryEnabled_RecordsUsageEvent` already asserts this at the acceptance layer (`!strings.Contains(logContent, "kube.io")`); a dedicated static-analysis/linter enforcement is a DELIVER/DEVOPS hardening task, not a DISTILL blocker. |
+| MEDIUM-4 | `usage.log` has no documented rotation/retention policy | **Accepted as backlog item** — out of DISCUSS scope (no story requires log rotation); flagged for a future release, not MVP. |
+| MEDIUM-5 | Fault-injection CI suite's actual runtime vs. the <10min commit-stage target unmeasured | **Accepted as DELIVER-scope action item** — cannot be measured until the fault-injection suite exists (DELIVER GREEN phase); DEVOPS's parallel-jobs design already anticipated this risk. |
+| LOW-1 | No DISTILL scenario asserts the coexistence-matrix "N/A" claim | **Accepted as backlog item** — informational only, the underlying claim is correct today. |
+| LOW-2 | Disabled-telemetry (`NoOpUsageLogAdapter`) path relies on implicit coverage | **Accepted as backlog item, informational** — every save/find/share scenario in this suite already exercises the default (telemetry-disabled) composition-root path; a dedicated `TestSave_WithTelemetryDisabled_DoesNotCreateLogFile` scenario is a low-cost DELIVER-phase addition, not required for handoff. |
+
+**Result: zero blockers, zero unresolved critical/high findings.** Both HIGH findings and the one
+CRITICAL finding were closed with direct, narrow, scoped documentation edits this session (no
+architectural rework, no re-dispatch of `@nw-platform-architect` needed — same "straightforward,
+scoped edits, no iteration-2 re-review" pattern DESIGN's own peer review already established).
+Five MEDIUM/LOW findings are accepted-with-conditions as documented DELIVER-scope or backlog
+action items above, none of which block scenario authorship or the DELIVER RED→GREEN cycle.
+
+### [REF] DISTILL Wave Final Handoff Status
+
+**HANDOFF-READY to DELIVER.** All four Final Wave Review Gate verdicts are APPROVED or
+CONDITIONALLY_APPROVED with documented action items (table above) — gate condition satisfied
+(zero blockers; zero unresolved high findings). Pre-DELIVER fail-for-the-right-reason gate passed
+(`docs/feature/bookmark-cli/distill/red-classification.md`). Mandate compliance evidence (CM-A
+through CM-H, plus Mandate-12 criteria 1-4) recorded in the `[REF]` sections above.
+
+**Handoff package for DELIVER** (`@nw-functional-software-crafter`, per `CLAUDE.md`'s paradigm
+routing):
+- `tests/acceptance/bookmark_cli/*_test.go` (25 scenarios, 24 skip-marked, walking skeleton active RED)
+- `tests/common/state_delta.go` (project-local state-delta port)
+- `internal/core/`, `internal/ports/`, `internal/adapters/*`, `cmd/bm/` (RED scaffolds — every
+  `panic("... -- RED scaffold")` call site is DELIVER's GREEN-phase worklist)
+- `docs/feature/bookmark-cli/distill/red-classification.md` (RED gate evidence)
+- `docs/architecture/atdd-infrastructure-policy.md` (bootstrapped this wave)
+- This `feature-delta.md` (full DISCUSS→DESIGN→DEVOPS→DISTILL chain + review verdicts)
+
+**Suggested DELIVER sequencing** (per `story-map.md` priority + one-at-a-time discipline):
+1. `TestWalkingSkeleton_SaveFindShare` (already active RED)
+2. `TestSaveHelp_ShowsConcreteExample` (trivially GREEN — static CLI metadata already correct)
+3. Remaining US-01 scenarios, then US-02, US-03, US-04, US-05, US-06, then the 3
+   `@adapter-integration` scenarios (backup snapshot, telemetry, degraded-filesystem) last, since
+   they depend on `bm save` already being GREEN.
