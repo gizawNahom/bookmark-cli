@@ -44,14 +44,20 @@ func queryTerms(query string) []string {
 	return strings.Fields(strings.ToLower(query))
 }
 
+// isWordSeparator splits on anything that is not a lowercase letter or digit, so both candidate
+// text (URL/tag) and query terms tokenize consistently on punctuation such as hyphens.
+func isWordSeparator(r rune) bool {
+	return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+}
+
+// splitWords tokenizes a lowercased string into word fragments using isWordSeparator.
+func splitWords(text string) []string {
+	return strings.FieldsFunc(strings.ToLower(text), isWordSeparator)
+}
+
 // candidateWords returns every matchable word from a record's tag and URL, lowercased.
 func candidateWords(candidate Record) []string {
-	isWordSeparator := func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
-	}
-
-	haystack := strings.ToLower(candidate.URL)
-	words := strings.FieldsFunc(haystack, isWordSeparator)
+	words := splitWords(candidate.URL)
 	if candidate.Tag != "" {
 		words = append(words, strings.ToLower(candidate.Tag))
 	}
@@ -85,7 +91,13 @@ func bestWordScore(term string, words []string) (float64, bool) {
 		switch {
 		case word == term:
 			return 1.0, true
-		case strings.Contains(word, term) || strings.Contains(term, word):
+		case strings.Contains(word, term):
+			// Only "word contains term" counts as a substring match (e.g. query "fail" against
+			// word "failover"). The reverse direction ("term contains word") is deliberately
+			// excluded: a short candidate word (e.g. tag "grpc") would otherwise substring-match
+			// against almost any longer, unrelated compound query term (e.g. "grpc-retry-policy"),
+			// producing false positives that mask genuine no-match + closest-tag-suggestion cases
+			// (US-06 AC).
 			if 0.8 > best {
 				best = 0.8
 				matched = true
@@ -106,8 +118,19 @@ func bestWordScore(term string, words []string) (float64, bool) {
 
 // closestTag returns the existing tag closest (by edit distance) to any query term, for the
 // no-match "did you mean" suggestion (US-06). Returns "" when no tag is close enough.
+//
+// Compares against both whole query terms (typo case: "teraform" vs tag "terraform") and their
+// word-fragments split on punctuation (compound case: "grpc-retry-policy" contains fragment
+// "grpc", close to tag "grpc") -- a query term may be a hyphenated compound that embeds a
+// near-exact tag name even though the term as a whole is far from that tag by edit distance.
 func closestTag(terms []string, candidates []Record) string {
 	const maxSuggestDistance = 2
+
+	tokens := make([]string, 0, len(terms)*2)
+	tokens = append(tokens, terms...)
+	for _, term := range terms {
+		tokens = append(tokens, splitWords(term)...)
+	}
 
 	best := ""
 	bestDistance := maxSuggestDistance + 1
@@ -119,8 +142,8 @@ func closestTag(terms []string, candidates []Record) string {
 		}
 		seen[tag] = true
 
-		for _, term := range terms {
-			if d := levenshtein(term, tag); d <= maxSuggestDistance && d < bestDistance {
+		for _, token := range tokens {
+			if d := levenshtein(token, tag); d <= maxSuggestDistance && d < bestDistance {
 				bestDistance = d
 				best = candidate.Tag
 			}

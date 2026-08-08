@@ -61,16 +61,29 @@ func discoverabilityHint() string {
 	return "Hint: add --tag <name> next time to make this easier to find later"
 }
 
-// renderFindResult formats ranked matches, or the "no matches found" fallback (US-06's richer
-// closest-tag-suggestion / empty-store onboarding variants land in step 02-02).
+// renderEmptyStoreMessage is the onboarding message shown when `bm find` runs against a genuinely
+// empty store (US-06 AC). It is deliberately worded distinct from renderFindResult's no-match
+// text -- "haven't saved" vs "no matches" -- so the two cases are never conflated. Text-prefixed,
+// no ANSI-color-only status indicators (accessibility rule).
+func renderEmptyStoreMessage() string {
+	return "You haven't saved any links yet -- run `bm save <url>` to get started"
+}
+
+// renderFindResult formats ranked matches, or a "no matches" fallback for a non-empty store
+// (US-06 AC). When RankedMatches carries a SuggestedTag (closest existing tag within edit-distance
+// threshold, core.RankMatches), the message includes a "did you mean" nudge; otherwise it is a
+// clean, non-blank "no matches found" message.
 //
 // Trailing newline is deliberately one-per-match (present only when there is >=1 match): the
 // acceptance harness's state-delta Universe (captureFindUniverse, tests/acceptance/bookmark_cli/
 // harness_test.go) derives find.match_count from counting "\n" in stdout, refined during DELIVER
-// GREEN per that file's own comment. Keeping "no matches found" newline-free is what makes that
+// GREEN per that file's own comment. Keeping the no-match message newline-free is what makes that
 // count land on 0 rather than a phantom 1.
-func renderFindResult(matches core.RankedMatches) string {
+func renderFindResult(query string, matches core.RankedMatches) string {
 	if len(matches.Matches) == 0 {
+		if matches.SuggestedTag != "" {
+			return fmt.Sprintf("no matches for %q -- did you mean %q?", query, matches.SuggestedTag)
+		}
 		return "no matches found"
 	}
 

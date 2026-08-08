@@ -95,7 +95,6 @@ func TestFind_MultipleMatches_RankedNotForcedToOne(t *testing.T) {
 //	Then she sees "no matches for 'gRPC-retry-policy'"
 //	And a suggestion "did you mean 'grpc'?"
 func TestFind_NoMatch_SuggestsClosestTag(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t).WithExistingStore(Bookmark{URL: "https://grpc.io/docs/retry", Tag: "grpc"})
 
 	result := cli.Find("gRPC-retry-policy")
@@ -113,7 +112,6 @@ func TestFind_NoMatch_SuggestsClosestTag(t *testing.T) {
 //	Then he sees a clear "no matches found" message
 //	And no crash, stack trace, or silent blank output
 func TestFind_NoMatch_NoCloseTag_ShowsCleanMessage(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t).WithExistingStore(Bookmark{URL: "https://kube.io/docs/failover", Tag: "k8s"})
 
 	result := cli.Find("teraform")
@@ -132,7 +130,6 @@ func TestFind_NoMatch_NoCloseTag_ShowsCleanMessage(t *testing.T) {
 //	Then she sees a message telling her she hasn't saved any links yet
 //	And it is visibly different from a normal no-match result
 func TestFind_EmptyStore_ShowsOnboardingMessage(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t) // no WithExistingStore -- store is genuinely empty
 
 	result := cli.Find("anything")
@@ -150,7 +147,15 @@ func TestFind_EmptyStore_ShowsOnboardingMessage(t *testing.T) {
 //	When the command completes
 //	Then the no-match message appears within a responsive feedback window
 func TestFind_NoMatchResponse_IsResponsive(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
+	t.Skip("BLOCKED: AT contradicts TestFind_EmptyStore_ShowsOnboardingMessage -- both use an " +
+		"empty store (no WithExistingStore seed) via NewCLI(t), but this scenario asserts stdout " +
+		"contains \"no matches\" while the empty-store scenario requires a distinct onboarding " +
+		"message (\"haven't saved\"/\"no links yet\") for the same precondition. As written, no " +
+		"single implementation can satisfy both for an empty store. Escalated to " +
+		"nw-acceptance-designer per DES step 02-02 -- likely missing a `.WithExistingStore(...)` " +
+		"seed here (Given says \"Jordan Osei's search returns zero matches\", implying an existing " +
+		"non-matching store, matching the sibling NoCloseTag scenario's shape, not a genuinely " +
+		"empty one). Crafter does not author/modify ATs (scope boundary); see step report.")
 	cli := NewCLI(t)
 
 	start := time.Now()
