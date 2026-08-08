@@ -66,10 +66,16 @@ func renderSaveConfirmation(rec core.Record, plan core.SavePlan) string {
 		return fmt.Sprintf("[%s] %s is already saved -- add tag %q to it?", rec.ID, rec.URL, plan.Tag)
 	default:
 		if rec.Tag == "" {
-			return fmt.Sprintf("Saved [%s] %s", rec.ID, rec.URL)
+			return fmt.Sprintf("Saved [%s] %s\n%s", rec.ID, rec.URL, discoverabilityHint())
 		}
 		return fmt.Sprintf("Saved [%s] %s (tag: %s)", rec.ID, rec.URL, rec.Tag)
 	}
+}
+
+// discoverabilityHint nudges an untagged save toward tagging (US-04) without failing the command --
+// a one-line, text-prefixed hint (accessibility rule, brief.md Section 9).
+func discoverabilityHint() string {
+	return "Hint: add --tag <name> next time to make this easier to find later"
 }
 
 // renderFindResult formats ranked matches, or the "no matches found" fallback (US-06's richer

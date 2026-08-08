@@ -16,8 +16,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"bookmark-cli/internal/adapters/backup"
 	"bookmark-cli/internal/adapters/sqlitestore"
@@ -133,7 +135,78 @@ func newSaveCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&tag, "tag", "", "tag to attach to this bookmark")
+	cmd.SetFlagErrorFunc(suggestNearMissFlag)
 	return cmd
+}
+
+// suggestNearMissFlag corrects a near-miss flag typo (e.g. "--tags" instead of "--tag") with a
+// "did you mean --<flag>?" suggestion. Cobra's built-in "did you mean" suggestions only cover
+// command names, not flags (brief.md Section 19 Open Question 3), so this closes that gap
+// explicitly at the flag-parsing/error-handling boundary rather than leaving it to Cobra defaults.
+func suggestNearMissFlag(cmd *cobra.Command, err error) error {
+	const unknownFlagPrefix = "unknown flag: --"
+	msg := err.Error()
+	idx := strings.Index(msg, unknownFlagPrefix)
+	if idx == -1 {
+		return err
+	}
+	unknown := strings.TrimSpace(msg[idx+len(unknownFlagPrefix):])
+
+	if best := closestKnownFlag(cmd.Flags(), unknown); best != "" {
+		return fmt.Errorf("unknown flag: --%s -- did you mean --%s?", unknown, best)
+	}
+	return err
+}
+
+// closestKnownFlag returns the registered flag name closest to name by edit distance, within a
+// small threshold, or "" if none is close enough to be a plausible typo correction.
+func closestKnownFlag(flags *pflag.FlagSet, name string) string {
+	const maxDistance = 2
+	best := ""
+	bestDistance := maxDistance + 1
+	flags.VisitAll(func(f *pflag.Flag) {
+		if d := levenshteinDistance(name, f.Name); d <= maxDistance && d < bestDistance {
+			bestDistance = d
+			best = f.Name
+		}
+	})
+	return best
+}
+
+// levenshteinDistance computes the classic edit distance between two strings.
+func levenshteinDistance(a, b string) int {
+	rowLen := len(b) + 1
+	prev := make([]int, rowLen)
+	curr := make([]int, rowLen)
+	for j := 0; j < rowLen; j++ {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		curr[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			deletion := prev[j] + 1
+			insertion := curr[j-1] + 1
+			substitution := prev[j-1] + cost
+			curr[j] = min3(deletion, insertion, substitution)
+		}
+		prev, curr = curr, prev
+	}
+	return prev[len(b)]
+}
+
+func min3(a, b, c int) int {
+	m := a
+	if b < m {
+		m = b
+	}
+	if c < m {
+		m = c
+	}
+	return m
 }
 
 func newFindCmd() *cobra.Command {

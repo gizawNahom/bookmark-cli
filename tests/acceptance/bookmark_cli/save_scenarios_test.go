@@ -148,7 +148,6 @@ func TestSave_URLWithQueryParams_SavesWithFullFidelity(t *testing.T) {
 //	When the command completes
 //	Then she sees a one-line hint suggesting "--tag <name>" to make it easier to find later
 func TestSave_WithoutTag_ShowsDiscoverabilityHint(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t)
 
 	result := cli.Save("https://kube.io/docs/failover", "")
@@ -178,7 +177,6 @@ func TestSaveHelp_ShowsConcreteExample(t *testing.T) {
 //	Then he sees a suggestion "did you mean --tag?"
 //	And the command does not fail silently or with a bare parse error
 func TestSave_NearMissFlag_SuggestsDidYouMean(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t)
 
 	result := cli.SaveWithFlag("https://kube.io/docs/failover", "--tags", "k8s")
