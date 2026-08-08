@@ -1189,3 +1189,16 @@ routing):
 3. Remaining US-01 scenarios, then US-02, US-03, US-04, US-05, US-06, then the 3
    `@adapter-integration` scenarios (backup snapshot, telemetry, degraded-filesystem) last, since
    they depend on `bm save` already being GREEN.
+
+## Wave: DELIVER / [WHY] Upstream Issues
+
+**Test-authoring defect found during DELIVER step 02-02** (`tests/acceptance/bookmark_cli/find_scenarios_test.go`):
+`TestFind_NoMatchResponse_IsResponsive` and `TestFind_EmptyStore_ShowsOnboardingMessage` both used
+`NewCLI(t)` with no `.WithExistingStore(...)` seed — a genuinely empty store — but asserted mutually
+exclusive outcomes for that same precondition: an onboarding message ("haven't saved"/"no links
+yet") versus the ordinary "no matches" message. No single implementation could satisfy both. Fix:
+gave `TestFind_NoMatchResponse_IsResponsive` a `.WithExistingStore(...)` seed with a
+non-matching bookmark, mirroring the sibling `TestFind_NoMatch_NoCloseTag_ShowsCleanMessage`
+pattern, and removed the `t.Skip("BLOCKED: ...")` marker. This is a test-only fix — zero production
+code was touched — and `go build ./... && go vet ./...` plus the file's scenario run confirm the
+suite is internally consistent and green.

@@ -147,16 +147,7 @@ func TestFind_EmptyStore_ShowsOnboardingMessage(t *testing.T) {
 //	When the command completes
 //	Then the no-match message appears within a responsive feedback window
 func TestFind_NoMatchResponse_IsResponsive(t *testing.T) {
-	t.Skip("BLOCKED: AT contradicts TestFind_EmptyStore_ShowsOnboardingMessage -- both use an " +
-		"empty store (no WithExistingStore seed) via NewCLI(t), but this scenario asserts stdout " +
-		"contains \"no matches\" while the empty-store scenario requires a distinct onboarding " +
-		"message (\"haven't saved\"/\"no links yet\") for the same precondition. As written, no " +
-		"single implementation can satisfy both for an empty store. Escalated to " +
-		"nw-acceptance-designer per DES step 02-02 -- likely missing a `.WithExistingStore(...)` " +
-		"seed here (Given says \"Jordan Osei's search returns zero matches\", implying an existing " +
-		"non-matching store, matching the sibling NoCloseTag scenario's shape, not a genuinely " +
-		"empty one). Crafter does not author/modify ATs (scope boundary); see step report.")
-	cli := NewCLI(t)
+	cli := NewCLI(t).WithExistingStore(Bookmark{URL: "https://kube.io/docs/failover", Tag: "k8s"})
 
 	start := time.Now()
 	result := cli.Find("nothing-saved-under-this-term")
