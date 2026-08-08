@@ -68,6 +68,45 @@ func newComposition() (*composition, error) {
 	return &composition{store: store, backupSvc: backupSvc, usageLog: usageLogger, dataDirAbs: dir}, nil
 }
 
+// withBackupProbe/withoutBackupProbe name the prepareComposition call sites so each command
+// declares its probe requirement by name rather than a bare boolean literal.
+const (
+	withBackupProbe    = true
+	withoutBackupProbe = false
+)
+
+// prepareComposition wires the composition root and runs the "health.startup.refused" probe
+// sequence shared by every command: store and usage-log are always probed; backup is probed only
+// for commands that may trigger a snapshot (currently: save). Centralizing this here removes the
+// near-identical probe block that was previously repeated in each command's RunE.
+func prepareComposition(needsBackupProbe bool) (*composition, error) {
+	comp, err := newComposition()
+	if err != nil {
+		return nil, err
+	}
+	if err := probeOrRefused(comp.store.Probe); err != nil {
+		return nil, err
+	}
+	if needsBackupProbe {
+		if err := probeOrRefused(comp.backupSvc.Probe); err != nil {
+			return nil, err
+		}
+	}
+	if err := probeOrRefused(comp.usageLog.Probe); err != nil {
+		return nil, err
+	}
+	return comp, nil
+}
+
+// probeOrRefused runs a driven-port Probe and wraps a failure as the "health.startup.refused"
+// contract (ADR-007) expected on stdout/stderr by the acceptance-test fault-injection scenarios.
+func probeOrRefused(probe func() error) error {
+	if err := probe(); err != nil {
+		return fmt.Errorf("health.startup.refused: %w", err)
+	}
+	return nil
+}
+
 // runCommand wraps a command body, converting a RED-scaffold panic into a structured, non-zero
 // exit failure rather than an unhandled crash -- see file-level doc comment.
 func runCommand(body func() error) error {
@@ -107,25 +146,16 @@ func newSaveCmd() *cobra.Command {
 					return errors.New(validation.Reason)
 				}
 
-				comp, err := newComposition()
+				comp, err := prepareComposition(withBackupProbe)
 				if err != nil {
 					return err
-				}
-				if err := comp.store.Probe(); err != nil {
-					return fmt.Errorf("health.startup.refused: %w", err)
-				}
-				if err := comp.backupSvc.Probe(); err != nil {
-					return fmt.Errorf("health.startup.refused: %w", err)
-				}
-				if err := comp.usageLog.Probe(); err != nil {
-					return fmt.Errorf("health.startup.refused: %w", err)
 				}
 
 				existing, err := comp.store.All()
 				if err != nil {
 					return err
 				}
-				plan := planSaveOrFail(args[0], tag, existing)
+				plan := planSave(args[0], tag, existing)
 				rec, err := comp.store.Execute(plan)
 				if err != nil {
 					return err
@@ -175,48 +205,12 @@ func closestKnownFlag(flags *pflag.FlagSet, name string) string {
 	best := ""
 	bestDistance := maxDistance + 1
 	flags.VisitAll(func(f *pflag.Flag) {
-		if d := levenshteinDistance(name, f.Name); d <= maxDistance && d < bestDistance {
+		if d := core.LevenshteinDistance(name, f.Name); d <= maxDistance && d < bestDistance {
 			bestDistance = d
 			best = f.Name
 		}
 	})
 	return best
-}
-
-// levenshteinDistance computes the classic edit distance between two strings.
-func levenshteinDistance(a, b string) int {
-	rowLen := len(b) + 1
-	prev := make([]int, rowLen)
-	curr := make([]int, rowLen)
-	for j := 0; j < rowLen; j++ {
-		prev[j] = j
-	}
-	for i := 1; i <= len(a); i++ {
-		curr[0] = i
-		for j := 1; j <= len(b); j++ {
-			cost := 1
-			if a[i-1] == b[j-1] {
-				cost = 0
-			}
-			deletion := prev[j] + 1
-			insertion := curr[j-1] + 1
-			substitution := prev[j-1] + cost
-			curr[j] = min3(deletion, insertion, substitution)
-		}
-		prev, curr = curr, prev
-	}
-	return prev[len(b)]
-}
-
-func min3(a, b, c int) int {
-	m := a
-	if b < m {
-		m = b
-	}
-	if c < m {
-		m = c
-	}
-	return m
 }
 
 func newFindCmd() *cobra.Command {
@@ -226,15 +220,9 @@ func newFindCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCommand(func() error {
-				comp, err := newComposition()
+				comp, err := prepareComposition(withoutBackupProbe)
 				if err != nil {
 					return err
-				}
-				if err := comp.store.Probe(); err != nil {
-					return fmt.Errorf("health.startup.refused: %w", err)
-				}
-				if err := comp.usageLog.Probe(); err != nil {
-					return fmt.Errorf("health.startup.refused: %w", err)
 				}
 				query := joinArgs(args)
 				all, err := comp.store.All()
@@ -250,7 +238,7 @@ func newFindCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				matches := rankOrFail(query, results)
+				matches := rankMatches(query, results)
 				_ = comp.usageLog.Record(ports.UsageEvent{Event: "bm.find", ResultCount: len(matches.Matches)})
 				fmt.Fprint(cmd.OutOrStdout(), renderFindResult(query, matches))
 				return nil
@@ -267,15 +255,9 @@ func newShareCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCommand(func() error {
-				comp, err := newComposition()
+				comp, err := prepareComposition(withoutBackupProbe)
 				if err != nil {
 					return err
-				}
-				if err := comp.store.Probe(); err != nil {
-					return fmt.Errorf("health.startup.refused: %w", err)
-				}
-				if err := comp.usageLog.Probe(); err != nil {
-					return fmt.Errorf("health.startup.refused: %w", err)
 				}
 				rec, found, err := comp.store.FindByID(args[0])
 				if err != nil {

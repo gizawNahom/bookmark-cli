@@ -8,26 +8,16 @@ import (
 	"bookmark-cli/internal/core"
 )
 
-// planSaveOrFail delegates to the pure core decision (ADR-006 Plan-value pattern).
-func planSaveOrFail(url, tag string, existing []core.Record) core.SavePlan {
+// planSave delegates to the pure core decision (ADR-006 Plan-value pattern).
+func planSave(url, tag string, existing []core.Record) core.SavePlan {
 	return core.PlanSave(url, tag, existing)
 }
 
-// rankOrFail delegates to the pure core ranking engine (ADR-006): typo-tolerant matching (US-02)
-// and closest-tag suggestion on no-match (US-06) both live in core.RankMatches, implemented in
-// step 02-01. This shell function exists only to keep the find-command call site symmetric with
-// planSaveOrFail/formatOrFail.
-func rankOrFail(query string, candidates []core.Record) core.RankedMatches {
+// rankMatches delegates to the pure core ranking engine (ADR-006): typo-tolerant matching (US-02)
+// and closest-tag suggestion on no-match (US-06) both live in core.RankMatches. This shell
+// function exists only to keep the find-command call site symmetric with planSave.
+func rankMatches(query string, candidates []core.Record) core.RankedMatches {
 	return core.RankMatches(query, candidates)
-}
-
-// formatOrFail is the walking-skeleton-minimal share-snippet formatter. Exact-fidelity formatting
-// (US-03) is core.FormatSnippet's responsibility, implemented and wired in step 03-01.
-func formatOrFail(rec core.Record) core.ShareSnippet {
-	if rec.Tag == "" {
-		return core.ShareSnippet{Text: rec.URL}
-	}
-	return core.ShareSnippet{Text: fmt.Sprintf("%s (tag: %s)", rec.URL, rec.Tag)}
 }
 
 func joinArgs(args []string) string {

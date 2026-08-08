@@ -103,7 +103,7 @@ func bestWordScore(term string, words []string) (float64, bool) {
 				matched = true
 			}
 		default:
-			distance := levenshtein(term, word)
+			distance := LevenshteinDistance(term, word)
 			if distance <= maxTermEditDistance {
 				score := 1.0 - float64(distance)/float64(maxRuneCount(term, word)+1)
 				if score > best {
@@ -143,7 +143,7 @@ func closestTag(terms []string, candidates []Record) string {
 		seen[tag] = true
 
 		for _, token := range tokens {
-			if d := levenshtein(token, tag); d <= maxSuggestDistance && d < bestDistance {
+			if d := LevenshteinDistance(token, tag); d <= maxSuggestDistance && d < bestDistance {
 				bestDistance = d
 				best = candidate.Tag
 			}
@@ -160,8 +160,11 @@ func sortByRelevance(matches []RankedMatch) {
 	})
 }
 
-// levenshtein computes the classic single-character-edit distance between two strings.
-func levenshtein(a, b string) int {
+// LevenshteinDistance computes the classic single-character-edit distance between two strings.
+// Exported so both this matcher's typo-tolerant scoring and the shell's flag-typo suggestion
+// (cmd/bm's closestKnownFlag) share one pure implementation instead of two copies of the same
+// algorithm.
+func LevenshteinDistance(a, b string) int {
 	rowLen := len(b) + 1
 	prev := make([]int, rowLen)
 	curr := make([]int, rowLen)
