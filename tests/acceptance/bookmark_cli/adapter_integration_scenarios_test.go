@@ -26,7 +26,6 @@ import (
 //	When she runs "bm save https://kube.io/docs/failover --tag k8s"
 //	Then a backup snapshot file exists under the backup directory
 func TestSave_CreatesBackupSnapshot(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t)
 
 	result := cli.Save("https://kube.io/docs/failover", "k8s")
@@ -46,7 +45,6 @@ func TestSave_CreatesBackupSnapshot(t *testing.T) {
 //	Then a "bm.save" event is appended to her local usage log
 //	And the event never contains the URL or tag content
 func TestSave_WithTelemetryEnabled_RecordsUsageEvent(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t).WithTelemetryEnabled()
 
 	result := cli.Save("https://kube.io/docs/failover", "k8s")
@@ -72,7 +70,6 @@ func TestSave_WithTelemetryEnabled_RecordsUsageEvent(t *testing.T) {
 // a mocked filesystem -- environments.yaml explicitly names this matrix entry as the contract
 // this scenario validates.
 func TestSave_DegradedFilesystem_RefusesCleanly(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t).WithReadOnlyDataDir()
 
 	result := cli.Save("https://kube.io/docs/failover", "k8s")

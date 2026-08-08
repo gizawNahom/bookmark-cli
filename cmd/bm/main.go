@@ -114,9 +114,12 @@ func newSaveCmd() *cobra.Command {
 				if err := comp.store.Probe(); err != nil {
 					return fmt.Errorf("health.startup.refused: %w", err)
 				}
-				// Backup-adapter wiring (Probe + Snapshot-after-confirmation) lands in step 04-01
-				// alongside the backup.Adapter implementation itself -- kept out of this walking
-				// skeleton so `bm save` does not depend on an adapter this step does not own.
+				if err := comp.backupSvc.Probe(); err != nil {
+					return fmt.Errorf("health.startup.refused: %w", err)
+				}
+				if err := comp.usageLog.Probe(); err != nil {
+					return fmt.Errorf("health.startup.refused: %w", err)
+				}
 
 				existing, err := comp.store.All()
 				if err != nil {
@@ -130,6 +133,13 @@ func newSaveCmd() *cobra.Command {
 				_ = comp.usageLog.Record(ports.UsageEvent{Event: "bm.save", Outcome: string(plan.Kind)})
 
 				fmt.Fprintln(cmd.OutOrStdout(), renderSaveConfirmation(rec, plan))
+
+				// Snapshot happens strictly AFTER the confirmation is already printed (brief.md
+				// Section 8 perceived-latency budget) -- a failed backup never turns a successful
+				// save into a failed command; it is reported as a warning on stderr instead.
+				if err := comp.backupSvc.Snapshot(comp.store.Path); err != nil {
+					fmt.Fprintln(cmd.ErrOrStderr(), "warning: backup snapshot failed:", err)
+				}
 				return nil
 			})
 		},
@@ -223,6 +233,9 @@ func newFindCmd() *cobra.Command {
 				if err := comp.store.Probe(); err != nil {
 					return fmt.Errorf("health.startup.refused: %w", err)
 				}
+				if err := comp.usageLog.Probe(); err != nil {
+					return fmt.Errorf("health.startup.refused: %w", err)
+				}
 				query := joinArgs(args)
 				all, err := comp.store.All()
 				if err != nil {
@@ -259,6 +272,9 @@ func newShareCmd() *cobra.Command {
 					return err
 				}
 				if err := comp.store.Probe(); err != nil {
+					return fmt.Errorf("health.startup.refused: %w", err)
+				}
+				if err := comp.usageLog.Probe(); err != nil {
 					return fmt.Errorf("health.startup.refused: %w", err)
 				}
 				rec, found, err := comp.store.FindByID(args[0])
