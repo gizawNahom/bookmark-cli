@@ -435,25 +435,25 @@ search (Glob/Grep) confirmed no existing implementation of any kind.
 Section 0/6.1). No contract-testing annotation is needed for the platform-architect handoff —
 noted explicitly so its absence isn't mistaken for an oversight.
 
-### 18. Instrumentation Dependency (flagged, not built here)
+### 18. Instrumentation Dependency — IMPLEMENTED
 
-`outcome-kpis.md` notes that North Star/KPI-1 telemetry requires local opt-in usage logging that
-doesn't exist yet. This architecture does not preclude adding a lightweight local event-log
-adapter later (would slot in as another bounded-change driven adapter, e.g.
-`UsageLogAdapter.Record(event)` bounded to a log file) — flagged for DEVOPS wave
-(`platform-architect`) per the KPI doc's own guidance, not built in this wave.
+`outcome-kpis.md` originally noted that North Star/KPI-1 telemetry requires local opt-in usage
+logging that did not exist at DESIGN time. **Resolved**: designed in DEVOPS wave
+(`docs/product/kpi-contracts.yaml`) and shipped in DELIVER as the bounded-change driven adapter
+anticipated here — `UsageLogger` port + `FileUsageLogAdapter`/`NoOpUsageLogAdapter` (bounded to
+`${data_dir}/usage.log`), wired to `bm.save`/`bm.find`/`bm.share` events and the new `bm stats`
+read-only driving port. See Component Inventory below.
 
 ### 19. Open Questions Deferred to DISTILL/DELIVER
 
 1. **`bm restore` command** — not designed in this wave; MVP relies on manually copying a
    snapshot file back into place. Revisit if pilot feedback shows this is too manual.
-2. **Exact FTS5 tokenizer/ranking tuning** for the fuzzy-match "did you mean" tag suggestion
-   (US-06) — architecture specifies the `Matcher` port and that FTS5 provides the mechanism;
-   tuning the trigram/edit-distance threshold is an implementation-level (crafter) decision made
-   during GREEN, not prescribed here.
-3. **`--tags` typo → "did you mean --tag?" flag-level correction** (US-04) — Cobra provides
-   command-level suggestions natively; flag-level suggestion needs a small custom layer. Left as
-   a crafter-level implementation detail (behavior is specified in AC, not the mechanism).
+2. ~~Exact FTS5 tokenizer/ranking tuning~~ — **RESOLVED**: implemented in `internal/core/matcher.go`
+   (`RankMatches`) during DELIVER step 02-01/02-02, covering typo-tolerant and no-close-tag
+   suggestion scenarios (`TestFind_NearMissTypo_StillSurfacesMatch`,
+   `TestFind_NoMatch_SuggestsClosestTag`), both GREEN.
+3. ~~`--tags` typo → "did you mean --tag?" flag-level correction~~ — **RESOLVED**: implemented in
+   `cmd/bm/main.go` during DELIVER step 01-03 (`TestSave_NearMissFlag_SuggestsDidYouMean`), GREEN.
 4. ~~Paradigm write-back to CLAUDE.md~~ — **RESOLVED**: content finalized (see "Paradigm
    Selection" below); the write was correctly held after an earlier relayed-agent-message
    attempt, then completed following direct in-session user confirmation (2026-08-07).
@@ -480,3 +480,61 @@ agent message and was correctly held per this agent's standing instruction (an a
 claim of user approval cannot authorize a CLAUDE.md/config write). Direct, in-session
 confirmation was subsequently obtained from the user, and the "Development Paradigm" section has
 been persisted.
+
+---
+
+## Component Inventory — SHIPPED (added at DELIVER finalize, 2026-08-08)
+
+Confirms which components from Section 5's contract-shape classification table actually shipped
+in DELIVER, plus components added during the DEVOPS-wave telemetry design (Section 18) that post-date
+the original Section 5 table. Source: `docs/feature/bookmark-cli/deliver/execution-log.json`
+(7/7 roadmap steps COMMIT/PASS) and `docs/feature/bookmark-cli/feature-delta.md` DELIVER section
+(25/25 acceptance scenarios GREEN).
+
+### Core (pure functions) — 6 shipped
+
+| Component (Section 5 name) | Shipped as | File |
+|---|---|---|
+| `URLValidator.Validate` | `ValidateURL` | `internal/core/validator.go` |
+| `TagNormalizer.Normalize` | `NormalizeTag` | `internal/core/normalizer.go` |
+| `DuplicateDetector.Check` | `CheckDuplicate` | `internal/core/duplicate.go` |
+| `SavePlanner.Plan` | `PlanSave` (Plan-value pattern, ADR-006) | `internal/core/planner.go` |
+| `Matcher.Rank` | `RankMatches` | `internal/core/matcher.go` |
+| `SnippetFormatter.Format` | `FormatSnippet` | `internal/core/formatter.go` |
+
+Note: Section 5's original table lists 6 pure-function core rows (not 5) — recorded accurately
+here rather than force-fit to a round number.
+
+### Ports — 5 shipped (3 designed in DESIGN + 1 added in DEVOPS for telemetry + `Prober`)
+
+| Port | Designed in | File |
+|---|---|---|
+| `BookmarkReader` (read-only: `FindByID`/`Search`/`All`) | DESIGN (Section 5) | `internal/ports/ports.go` |
+| `BookmarkWriter` (`Execute(SavePlan)` only) | DESIGN (Section 5) | `internal/ports/ports.go` |
+| `BackupService` (`Snapshot`) | DESIGN (Section 5) | `internal/ports/ports.go` |
+| `UsageLogger` (`Record(UsageEvent)`) | DEVOPS (Section 18 / kpi-contracts.yaml) | `internal/ports/ports.go` |
+| `Prober` (`Probe() error`, ADR-007) | DESIGN (Section 12) | `internal/ports/ports.go` |
+
+### Adapters — 4 shipped (2 designed in DESIGN + 2 added in DEVOPS for telemetry)
+
+| Adapter | Implements | Designed in | File |
+|---|---|---|---|
+| `SQLiteBookmarkStore` | `BookmarkReader`+`BookmarkWriter`+`Prober` | DESIGN (Section 5) | `internal/adapters/sqlitestore/store.go` |
+| `FileBackupAdapter` | `BackupService`+`Prober` | DESIGN (Section 5) | `internal/adapters/backup/filebackup.go` |
+| `FileUsageLogAdapter` | `UsageLogger`+`Prober` | DEVOPS (Section 18) | `internal/adapters/usagelog/usagelog.go` |
+| `NoOpUsageLogAdapter` | `UsageLogger` | DEVOPS (Section 18) | `internal/adapters/usagelog/usagelog.go` |
+
+### Command Orchestrators (Imperative Shell) — 4 shipped (3 designed in DESIGN + 1 added in DEVOPS)
+
+| Orchestrator | Designed in | File |
+|---|---|---|
+| `SaveCommand` | DESIGN (Section 5) | `cmd/bm/main.go` |
+| `FindCommand` | DESIGN (Section 5) | `cmd/bm/main.go` |
+| `ShareCommand` | DESIGN (Section 5) | `cmd/bm/main.go` |
+| `StatsCommand` (`bm stats`, read-only aggregation) | DEVOPS (Section 18 / kpi-contracts.yaml) | `cmd/bm/main.go` |
+
+**Confirmation**: all components designed in Section 5 shipped as designed — zero deviation
+between the DESIGN-wave contract-shape classification and the DELIVER-wave implementation. The
+4 DEVOPS-added components (1 port, 2 adapters, 1 orchestrator) extend the same contract-shape
+discipline (bounded-change adapters, pure-read orchestrator) rather than introducing a new
+pattern.

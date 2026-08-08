@@ -34,6 +34,10 @@ features:
         aggregation: "`bm stats` command counts bm.save events per week from usage.log; compared against pilot self-report of workaround usage (Slack/text-file) collected out-of-band by product-owner"
         dashboard: "Local weekly summary table via `bm stats --since 7d`; pilot facilitator compiles across pilot users manually (no central server to aggregate automatically — by design, per local-first architecture)"
         alerting: "None (local, pilot-scale) — product-owner reviews weekly self-report against `bm stats` output"
+        baseline:
+          status: "not yet measured, pending first dogfood"
+          recorded_at: "2026-08-08"
+          note: "Feature finalized in DELIVER (25/25 acceptance scenarios GREEN) but has 0 real pilot usage yet. Instrumentation (bm.save event via UsageLogger/FileUsageLogAdapter) ships working and verified (TestSave_WithTelemetryEnabled_RecordsUsageEvent, GREEN) — no fabricated adoption number is recorded here. Whoever runs the first dogfood/pilot session should populate this field with the first real `bm stats` reading."
 
       - id: NORTH-STAR
         name: "Weekly active bm find invocations"
