@@ -20,7 +20,6 @@ import (
 //	When she runs "bm share <id>"
 //	Then she sees a copy-paste-ready snippet containing the URL and tag
 func TestShare_CuratedLink_ProducesZeroInstallSnippet(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t)
 	saveResult := cli.Save("https://kube.io/docs/failover", "k8s")
 	id := extractBookmarkID(t, saveResult.Stdout)
@@ -40,7 +39,6 @@ func TestShare_CuratedLink_ProducesZeroInstallSnippet(t *testing.T) {
 //	When Aisha Rahman runs "bm share a1b2"
 //	Then the URL and tag in the snippet exactly match the record shown by "bm find"
 func TestShare_SnippetMatchesFindRecordExactly(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t)
 	saveResult := cli.Save("https://kube.io/docs/failover", "k8s")
 	id := extractBookmarkID(t, saveResult.Stdout)
@@ -62,7 +60,6 @@ func TestShare_SnippetMatchesFindRecordExactly(t *testing.T) {
 //	When he runs "bm share" with that bookmark's id
 //	Then he sees a valid snippet containing the URL with no broken tag field
 func TestShare_LinkWithoutTag_ProducesValidSnippet(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t)
 	saveResult := cli.Save("https://kube.io/docs/networking", "")
 	id := extractBookmarkID(t, saveResult.Stdout)
@@ -83,7 +80,6 @@ func TestShare_LinkWithoutTag_ProducesValidSnippet(t *testing.T) {
 //	Given Priti Desai runs "bm share a9z9" for an id that does not exist
 //	Then she sees a clear error naming the invalid id, not a blank or garbled snippet
 func TestShare_UnknownID_FailsClearly(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t)
 
 	result := cli.Share("a9z9")

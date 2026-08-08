@@ -268,7 +268,7 @@ func newShareCmd() *cobra.Command {
 				if !found {
 					return fmt.Errorf("no bookmark found with id %q", args[0])
 				}
-				snippet := formatOrFail(rec)
+				snippet := core.FormatSnippet(rec)
 				_ = comp.usageLog.Record(ports.UsageEvent{Event: "bm.share"})
 				fmt.Fprintln(cmd.OutOrStdout(), snippet.Text)
 				return nil
