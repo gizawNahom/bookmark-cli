@@ -51,14 +51,25 @@ func joinArgs(args []string) string {
 	return strings.Join(args, " ")
 }
 
-// renderSaveConfirmation formats the "Saved [id] url (tag: x)" line. Every status/error line
-// carries a text prefix ("Saved") independent of any future ANSI color decoration (accessibility
-// rule, brief.md Section 9).
+// renderSaveConfirmation formats the outcome line for `bm save`. Every status/error line carries
+// a text prefix independent of any future ANSI color decoration (accessibility rule, brief.md
+// Section 9). Outcome varies by plan.Kind (ADR-006 Plan-value pattern: the message is derived
+// from the pure decision, never inferred from a write that may or may not have happened):
+//   - PlanNew: "Saved [id] url (tag: x)"
+//   - PlanDuplicate: already-saved notice including the existing bookmark id
+//   - PlanTagUpdate: an offer to add the new tag to the existing bookmark, mentioning the tag
 func renderSaveConfirmation(rec core.Record, plan core.SavePlan) string {
-	if rec.Tag == "" {
-		return fmt.Sprintf("Saved [%s] %s", rec.ID, rec.URL)
+	switch plan.Kind {
+	case core.PlanDuplicate:
+		return fmt.Sprintf("%s is already saved as [%s] -- no new entry created", rec.URL, rec.ID)
+	case core.PlanTagUpdate:
+		return fmt.Sprintf("[%s] %s is already saved -- add tag %q to it?", rec.ID, rec.URL, plan.Tag)
+	default:
+		if rec.Tag == "" {
+			return fmt.Sprintf("Saved [%s] %s", rec.ID, rec.URL)
+		}
+		return fmt.Sprintf("Saved [%s] %s (tag: %s)", rec.ID, rec.URL, rec.Tag)
 	}
-	return fmt.Sprintf("Saved [%s] %s (tag: %s)", rec.ID, rec.URL, rec.Tag)
 }
 
 // renderFindResult formats ranked matches, or the "no matches found" fallback (US-06's richer

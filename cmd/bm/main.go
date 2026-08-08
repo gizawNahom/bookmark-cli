@@ -12,6 +12,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"bookmark-cli/internal/adapters/backup"
 	"bookmark-cli/internal/adapters/sqlitestore"
 	"bookmark-cli/internal/adapters/usagelog"
+	"bookmark-cli/internal/core"
 	"bookmark-cli/internal/ports"
 )
 
@@ -99,6 +101,10 @@ func newSaveCmd() *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCommand(func() error {
+				if validation := core.ValidateURL(args[0]); !validation.Valid {
+					return errors.New(validation.Reason)
+				}
+
 				comp, err := newComposition()
 				if err != nil {
 					return err

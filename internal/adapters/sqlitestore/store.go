@@ -167,8 +167,19 @@ func (s *Store) Execute(plan core.SavePlan) (core.Record, error) {
 			return core.Record{}, fmt.Errorf("inserting new bookmark: %w", err)
 		}
 		return core.Record{ID: id, URL: plan.URL, Tag: plan.Tag, SavedAt: savedAt}, nil
+	case core.PlanDuplicate, core.PlanTagUpdate:
+		// No mutation: the pure core already decided this URL is already saved. Look up and
+		// return the existing record unchanged -- Execute never writes a second row for a plan
+		// that isn't PlanNew (ADR-006 / v3.15.1 precedent: duplicate detection must never
+		// silently write).
+		rec, err := scanRecord(db.QueryRow(
+			"SELECT id, url, tag, saved_at FROM bookmarks WHERE id = ?", plan.ExistingID,
+		))
+		if err != nil {
+			return core.Record{}, fmt.Errorf("looking up existing bookmark: %w", err)
+		}
+		return rec, nil
 	default:
-		// Duplicate/TagUpdate execution lands in step 01-02, alongside core.CheckDuplicate.
 		return core.Record{}, fmt.Errorf("sqlitestore: unsupported plan kind %q", plan.Kind)
 	}
 }

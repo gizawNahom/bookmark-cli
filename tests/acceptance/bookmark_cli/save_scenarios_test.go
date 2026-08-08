@@ -59,7 +59,6 @@ func TestSave_WithoutTag_StillSavesAndRetrievable(t *testing.T) {
 //	Then he sees a message that this URL is already saved, with its existing bookmark id
 //	And no second entry is created
 func TestSave_ExactDuplicate_DetectedNotDuplicated(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t).WithExistingStore(Bookmark{URL: "https://kube.io/docs/failover", Tag: "k8s"})
 	before := captureFindUniverse(cli.Find("failover"))
 
@@ -83,7 +82,6 @@ func TestSave_ExactDuplicate_DetectedNotDuplicated(t *testing.T) {
 //	Then she sees a message that this does not look like a valid URL
 //	And nothing is saved
 func TestSave_MalformedURL_RejectedWithClearMessage(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t)
 	before := captureFindUniverse(cli.Find("misc"))
 
@@ -111,7 +109,6 @@ func TestSave_MalformedURL_RejectedWithClearMessage(t *testing.T) {
 //	Then he is offered to add the "k8s" tag to the existing bookmark
 //	And no second entry is created
 func TestSave_SameURLNewTag_OffersTagUpdateNotDuplicate(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t).WithExistingStore(Bookmark{URL: "https://kube.io/docs/failover", Tag: ""})
 	before := captureFindUniverse(cli.Find("failover"))
 
@@ -133,7 +130,6 @@ func TestSave_SameURLNewTag_OffersTagUpdateNotDuplicate(t *testing.T) {
 //	Given Priti Desai runs "bm save https://wiki.internal/runbook?id=42&version=3 --tag oncall"
 //	Then the link is saved with the full URL including query parameters intact
 func TestSave_URLWithQueryParams_SavesWithFullFidelity(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t)
 	url := "https://wiki.internal/runbook?id=42&version=3"
 
