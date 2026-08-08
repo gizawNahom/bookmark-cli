@@ -106,9 +106,9 @@ func newSaveCmd() *cobra.Command {
 				if err := comp.store.Probe(); err != nil {
 					return fmt.Errorf("health.startup.refused: %w", err)
 				}
-				if err := comp.backupSvc.Probe(); err != nil {
-					return fmt.Errorf("health.startup.refused: %w", err)
-				}
+				// Backup-adapter wiring (Probe + Snapshot-after-confirmation) lands in step 04-01
+				// alongside the backup.Adapter implementation itself -- kept out of this walking
+				// skeleton so `bm save` does not depend on an adapter this step does not own.
 
 				existing, err := comp.store.All()
 				if err != nil {
@@ -119,12 +119,9 @@ func newSaveCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if err := comp.backupSvc.Snapshot(comp.store.Path); err != nil {
-					return err
-				}
 				_ = comp.usageLog.Record(ports.UsageEvent{Event: "bm.save", Outcome: string(plan.Kind)})
 
-				cmd.Println(renderSaveConfirmation(rec, plan))
+				fmt.Fprintln(cmd.OutOrStdout(), renderSaveConfirmation(rec, plan))
 				return nil
 			})
 		},
@@ -153,7 +150,7 @@ func newFindCmd() *cobra.Command {
 				}
 				matches := rankOrFail(joinArgs(args), results)
 				_ = comp.usageLog.Record(ports.UsageEvent{Event: "bm.find", ResultCount: len(matches.Matches)})
-				cmd.Println(renderFindResult(matches))
+				fmt.Fprint(cmd.OutOrStdout(), renderFindResult(matches))
 				return nil
 			})
 		},
@@ -184,7 +181,7 @@ func newShareCmd() *cobra.Command {
 				}
 				snippet := formatOrFail(rec)
 				_ = comp.usageLog.Record(ports.UsageEvent{Event: "bm.share"})
-				cmd.Println(snippet.Text)
+				fmt.Fprintln(cmd.OutOrStdout(), snippet.Text)
 				return nil
 			})
 		},
@@ -199,7 +196,7 @@ func newStatsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCommand(func() error {
 				if os.Getenv("BM_TELEMETRY_ENABLED") != "true" {
-					cmd.Println("telemetry is not enabled -- run `bm config set telemetry.enabled true` to start collecting local stats")
+					fmt.Fprintln(cmd.OutOrStdout(), "telemetry is not enabled -- run `bm config set telemetry.enabled true` to start collecting local stats")
 					return nil
 				}
 				panic("bm stats summary not yet implemented -- RED scaffold")

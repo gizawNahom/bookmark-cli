@@ -35,7 +35,6 @@ func increasedBy(n int) statedelta.Predicate {
 //	Then he sees a confirmation with a bookmark id and no tag shown
 //	And the link is still saved and retrievable by keyword
 func TestSave_WithoutTag_StillSavesAndRetrievable(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t)
 	before := captureFindUniverse(cli.Find("postmortem"))
 
@@ -168,7 +167,6 @@ func TestSave_WithoutTag_ShowsDiscoverabilityHint(t *testing.T) {
 //	Given Priti Desai runs "bm save --help"
 //	Then she sees an example line such as "bm save <url> --tag k8s"
 func TestSaveHelp_ShowsConcreteExample(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t)
 
 	result := cli.SaveHelp()
@@ -211,7 +209,6 @@ func TestSave_NearMissFlag_SuggestsDidYouMean(t *testing.T) {
 // guardrail (timing assertions in acceptance tests must use a generous budget); the <100ms
 // perceived-save target itself is validated by a benchmark in DELIVER, not this subprocess test.
 func TestSave_ConfirmationIsResponsive(t *testing.T) {
-	t.Skip("pending -- enable one scenario at a time per DELIVER RED->GREEN cycle, ADR-025")
 	cli := NewCLI(t)
 
 	start := time.Now()
