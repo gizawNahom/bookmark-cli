@@ -45,6 +45,42 @@ jobs:
           path: gremlins-report.json
           retention-days: 90
 
+  # Validates brief.md's <100ms perceived-save-confirmation and <10s find-responsiveness KPIs
+  # (Section 1, US-01/US-02/US-06) against real subprocess/SQLite execution, up to the stated
+  # 10,000-bookmark scale -- see tests/acceptance/bookmark_cli/save_bench_test.go. Advisory only,
+  # same posture as mutation-testing above: shared runners are noisy enough that a hard sub-100ms
+  # gate would fail on infrastructure variance, not real regressions. Runs independently of
+  # goreleaser (not in its `needs`) so a slow 10,000-bookmark seed never delays the release
+  # publish itself.
+  #
+  # -benchtime=5x (a fixed iteration count, not the default time-based calibration) matters here:
+  # each b.Run subtest reseeds its precondition on every calibration call the testing package
+  # would otherwise make, so time-based calibration would pay the seed cost multiple times over.
+  performance-benchmarks:
+    name: Performance benchmarks (advisory only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go test -bench (save-confirmation + find-responsiveness KPIs)
+        id: bench
+        continue-on-error: true
+        run: |
+          go test ./tests/acceptance/bookmark_cli/... -run '^$' -bench . -benchtime=5x -timeout=30m -v \
+            | tee performance-benchmark-report.txt
+      - name: Surface advisory outcome
+        if: steps.bench.outcome == 'failure'
+        run: echo "::warning::performance benchmarks failed to run cleanly -- advisory-only, see performance-benchmark-report.txt artifact. Does not block release."
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-benchmark-report
+          path: performance-benchmark-report.txt
+          retention-days: 90
+
   goreleaser:
     name: GoReleaser (cross-compile, SBOM, sign, publish, Homebrew bump)
     needs: [mutation-testing]

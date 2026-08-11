@@ -7,11 +7,13 @@
 package bookmarkcli_test
 
 import (
+	"bufio"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -76,8 +78,11 @@ type Result struct {
 // CLI is the acceptance-layer composition root: every scenario drives the system exclusively
 // through this type's methods, which shell out to the real `bm` binary (Mandate 1: driving port
 // only, zero internal-component imports from this package).
+//
+// t is testing.TB (not the concrete *testing.T) so the same harness serves both scenario tests
+// and the performance benchmarks in save_bench_test.go -- *testing.B satisfies testing.TB too.
 type CLI struct {
-	t                *testing.T
+	t                testing.TB
 	dataDir          string
 	telemetryEnabled bool
 }
@@ -85,7 +90,7 @@ type CLI struct {
 // NewCLI constructs a CLI harness with an isolated ${data_dir} under t.TempDir() -- each scenario
 // gets a fresh store, never sharing state with another scenario (Pillar 2's chained narrative
 // operates WITHIN a scenario's own Given/When steps, not by leaking store state across tests).
-func NewCLI(t *testing.T) *CLI {
+func NewCLI(t testing.TB) *CLI {
 	t.Helper()
 	return &CLI{t: t, dataDir: t.TempDir()}
 }
@@ -137,36 +142,91 @@ func (c *CLI) WithReadOnlyDataDir() *CLI {
 	return c
 }
 
-func (c *CLI) run(args ...string) Result {
-	c.t.Helper()
+// command builds an unstarted *exec.Cmd for args against this CLI's isolated ${data_dir}, shared
+// by run() and SaveTimed() so the two never drift on how the subprocess environment is wired.
+func (c *CLI) command(args ...string) *exec.Cmd {
 	cmd := exec.Command(binPath, args...)
 	cmd.Env = append(os.Environ(), "BM_DATA_DIR="+c.dataDir)
 	if c.telemetryEnabled {
 		cmd.Env = append(cmd.Env, "BM_TELEMETRY_ENABLED=true")
 	}
+	return cmd
+}
 
+// exitCodeOf extracts a subprocess's exit code from cmd.Run()/cmd.Wait()'s error: 0 for a clean
+// exit, the process's own code for a nonzero exit, or a hard test failure via msg for anything
+// else (a real infrastructure problem -- binary missing, permissions -- not a scenario/benchmark
+// outcome to assert on).
+func exitCodeOf(t testing.TB, err error, msg string) int {
+	t.Helper()
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode()
+	}
+	require.NoError(t, err, msg)
+	return 0
+}
+
+// saveArgs builds `bm save`'s argument list, shared by Save() and SaveTimed().
+func saveArgs(url, tag string) []string {
+	args := []string{"save", url}
+	if tag != "" {
+		args = append(args, "--tag", tag)
+	}
+	return args
+}
+
+func (c *CLI) run(args ...string) Result {
+	c.t.Helper()
+	cmd := c.command(args...)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
-	exitCode := 0
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		exitCode = exitErr.ExitCode()
-	} else {
-		require.NoError(c.t, err, "failed to run bm (infrastructure error, not a scenario assertion)")
-	}
+	exitCode := exitCodeOf(c.t, cmd.Run(), "failed to run bm (infrastructure error, not a scenario assertion)")
 	return Result{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exitCode}
 }
 
 // Save invokes `bm save <url> [--tag <tag>]` through the driving port.
 func (c *CLI) Save(url, tag string) Result {
 	c.t.Helper()
-	args := []string{"save", url}
-	if tag != "" {
-		args = append(args, "--tag", tag)
+	return c.run(saveArgs(url, tag)...)
+}
+
+// SaveTimed invokes `bm save <url> [--tag <tag>]` like Save, but additionally returns the wall-
+// clock latency from subprocess launch to the confirmation line ("Saved [...]") appearing on
+// stdout -- the <100ms perceived-save-confirmation budget (brief.md Section 1) is about what the
+// user sees, not full process exit. Backup snapshotting and telemetry both run synchronously
+// after the confirmation is printed (cmd/bm/main.go's save handler, by design -- a failed backup
+// never turns a successful save into a failed command) but strictly before the process exits, so
+// timing full process exit (as Save does via cmd.Run()) would fold that post-confirmation work
+// into the "perceived" figure and produce a false failure.
+func (c *CLI) SaveTimed(url, tag string) (Result, time.Duration) {
+	c.t.Helper()
+	cmd := c.command(saveArgs(url, tag)...)
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	require.NoError(c.t, err, "failed to attach stdout pipe (infrastructure error, not a benchmark assertion)")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+
+	start := time.Now()
+	require.NoError(c.t, cmd.Start(), "failed to start bm (infrastructure error, not a benchmark assertion)")
+
+	var stdout strings.Builder
+	var confirmedAfter time.Duration
+	scanner := bufio.NewScanner(stdoutPipe)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if confirmedAfter == 0 && strings.HasPrefix(line, "Saved [") {
+			confirmedAfter = time.Since(start)
+		}
+		stdout.WriteString(line)
+		stdout.WriteByte('\n')
 	}
-	return c.run(args...)
+	require.NoError(c.t, scanner.Err(), "failed reading bm stdout (infrastructure error, not a benchmark assertion)")
+
+	exitCode := exitCodeOf(c.t, cmd.Wait(), "failed to run bm (infrastructure error, not a benchmark assertion)")
+	return Result{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exitCode}, confirmedAfter
 }
 
 // SaveHelp invokes `bm save --help` through the driving port (US-04 AC).

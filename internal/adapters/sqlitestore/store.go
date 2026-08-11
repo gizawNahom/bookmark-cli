@@ -158,15 +158,7 @@ func (s *Store) Execute(plan core.SavePlan) (core.Record, error) {
 
 	switch plan.Kind {
 	case core.PlanNew:
-		id := newBookmarkID()
-		savedAt := time.Now().UTC()
-		if _, err := db.Exec(
-			"INSERT INTO bookmarks (id, url, tag, saved_at) VALUES (?, ?, ?, ?)",
-			id, plan.URL, plan.Tag, savedAt.Format(time.RFC3339),
-		); err != nil {
-			return core.Record{}, fmt.Errorf("inserting new bookmark: %w", err)
-		}
-		return core.Record{ID: id, URL: plan.URL, Tag: plan.Tag, SavedAt: savedAt}, nil
+		return insertNew(db, plan)
 	case core.PlanDuplicate, core.PlanTagUpdate:
 		// No mutation: the pure core already decided this URL is already saved. Look up and
 		// return the existing record unchanged -- Execute never writes a second row for a plan
@@ -182,6 +174,36 @@ func (s *Store) Execute(plan core.SavePlan) (core.Record, error) {
 	default:
 		return core.Record{}, fmt.Errorf("sqlitestore: unsupported plan kind %q", plan.Kind)
 	}
+}
+
+// maxIDCollisionRetries bounds insertNew's retry loop. newBookmarkID's random space makes a
+// single collision already unlikely at brief.md's stated 10,000-bookmark scale; this only
+// guards against the residual chance of one, not a normal/expected occurrence.
+const maxIDCollisionRetries = 5
+
+// insertNew writes a PlanNew record, regenerating the id and retrying on a bookmarks.id
+// collision -- newBookmarkID draws from a random space, so a fresh id has no reason to collide
+// again. A non-id constraint failure (e.g. the url UNIQUE constraint, which PlanNew should never
+// hit under normal operation) is returned immediately rather than retried, since retrying with a
+// new id wouldn't change the url.
+func insertNew(db *sql.DB, plan core.SavePlan) (core.Record, error) {
+	savedAt := time.Now().UTC()
+	var lastErr error
+	for range maxIDCollisionRetries {
+		id := newBookmarkID()
+		if _, err := db.Exec(
+			"INSERT INTO bookmarks (id, url, tag, saved_at) VALUES (?, ?, ?, ?)",
+			id, plan.URL, plan.Tag, savedAt.Format(time.RFC3339),
+		); err != nil {
+			if !strings.Contains(err.Error(), "bookmarks.id") {
+				return core.Record{}, fmt.Errorf("inserting new bookmark: %w", err)
+			}
+			lastErr = err
+			continue
+		}
+		return core.Record{ID: id, URL: plan.URL, Tag: plan.Tag, SavedAt: savedAt}, nil
+	}
+	return core.Record{}, fmt.Errorf("inserting new bookmark: id collided %d times in a row: %w", maxIDCollisionRetries, lastErr)
 }
 
 // scanner abstracts over *sql.Row and *sql.Rows so scanRecord serves both FindByID and All.
@@ -203,13 +225,17 @@ func scanRecord(row scanner) (core.Record, error) {
 	return rec, nil
 }
 
-// newBookmarkID generates a short, human-typeable hex id (e.g. "a1b2").
+// newBookmarkID generates a short, human-typeable hex id (e.g. "a1b2c3d4"). 4 random bytes (32
+// bits) keeps the birthday-bound collision probability at brief.md's stated 10,000-bookmark scale
+// under ~1.2% -- insertNew's retry loop covers that residual chance; a 2-byte id (the original
+// size) put collisions above 50% by ~300 saves and had no retry, so saves silently started failing
+// well before reaching any real-world store size.
 func newBookmarkID() string {
-	b := make([]byte, 2)
+	b := make([]byte, 4)
 	if _, err := rand.Read(b); err != nil {
 		// crypto/rand.Read on the standard reader does not fail in practice; a timestamp-derived
 		// fallback keeps this function total without panicking the imperative shell.
-		return hex.EncodeToString([]byte(time.Now().Format("050405")))
+		return hex.EncodeToString([]byte(time.Now().Format("20060102150405.000000")))
 	}
 	return hex.EncodeToString(b)
 }
