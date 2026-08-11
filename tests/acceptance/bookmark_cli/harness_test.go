@@ -28,7 +28,16 @@ func TestMain(m *testing.M) {
 	defer os.RemoveAll(tmp)
 
 	binPath = filepath.Join(tmp, "bm")
-	build := exec.Command("go", "build", "-o", binPath, "./cmd/bm")
+	buildArgs := []string{"build", "-o", binPath}
+	// When GOCOVERDIR is set (CI's integration-coverage step), build bm as a coverage-
+	// instrumented binary so each subprocess invocation below flushes counters there on exit --
+	// see go.dev/blog/integration-test-coverage. Left off locally (no GOCOVERDIR) to avoid the
+	// instrumentation build-time cost on every `go test` run.
+	if os.Getenv("GOCOVERDIR") != "" {
+		buildArgs = append(buildArgs, "-cover")
+	}
+	buildArgs = append(buildArgs, "./cmd/bm")
+	build := exec.Command("go", buildArgs...)
 	build.Dir = repoRoot()
 	if out, err := build.CombinedOutput(); err != nil {
 		panic("failed to build bm binary for acceptance tests: " + err.Error() + "\n" + string(out))

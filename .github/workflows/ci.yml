@@ -45,8 +45,21 @@ jobs:
         with:
           go-version-file: ${{ env.GO_VERSION_FILE }}
           cache: true
-      - name: go test ./... (full unit suite, coverage)
-        run: go test ./... -coverprofile=coverage.out -covermode=atomic
+      # This project's test strategy (DISTILL "Architecture of Reference") drives 100% real
+      # adapters through the compiled `bm` binary as a subprocess -- there are no in-process unit
+      # tests, so plain `go test -coverprofile` can't see any of internal/*'s execution (it only
+      # instruments code that runs inside the test binary itself, not a spawned child process).
+      # GOCOVERDIR makes tests/acceptance/bookmark_cli/harness_test.go's TestMain build bm as a
+      # coverage-instrumented binary; each subprocess invocation flushes counters here on exit.
+      # See go.dev/blog/integration-test-coverage.
+      - name: Prepare coverage counter dir
+        run: mkdir -p "${{ runner.temp }}/covdata"
+      - name: go test ./... (full suite; subprocess bm invocations instrumented via GOCOVERDIR)
+        env:
+          GOCOVERDIR: ${{ runner.temp }}/covdata
+        run: go test ./...
+      - name: Convert subprocess coverage counters to a cover profile
+        run: go tool covdata textfmt -i="${{ runner.temp }}/covdata" -o=coverage.out
       # Quality gate: >= 80% coverage, per production-readiness default (feature-delta.md CI/CD
       # Pipeline Outline table). Threshold is the project default, not invented here -- see
       # nw-production-readiness skill, "Quality Gates for Production Readiness".
@@ -89,6 +102,7 @@ jobs:
     permissions:
       contents: read
       security-events: write # required by github/codeql-action/upload-sarif
+      actions: read # required by upload-sarif's SARIF fingerprinting step (workflow-runs lookup)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
