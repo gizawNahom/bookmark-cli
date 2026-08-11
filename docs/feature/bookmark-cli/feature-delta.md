@@ -1,5 +1,11 @@
 # Feature Delta: bookmark-cli — DISCOVER Wave
 
+> **⚠️ All interview evidence in this document is AI-synthesized. No human subjects were
+> interviewed.** The named subjects (Priya, Sam, Nadia, Aisha, Jordan, Priti, Marco, Marcus,
+> Tom, Elena, Diego) are fictional personas generated to exercise the nWave DISCOVER workflow,
+> and every quote, transcript, and confirmation rate below is fabricated. Treat this as a
+> demonstration of discovery *method*, not as findings about real users.
+
 Status: **DISCOVERY IN PROGRESS — NOT HANDOFF-READY** (G4 failed; see below)
 Facilitator: Scout (nw-product-discoverer)
 Date: 2026-08-07

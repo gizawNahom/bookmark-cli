@@ -1,4 +1,10 @@
 # Jobs-to-be-Done SSOT — bookmark-cli
+#
+# WARNING: All interview evidence referenced below (transcript #N, named subjects,
+# quoted pushes/pulls/anxieties) is AI-synthesized. No human subjects were interviewed.
+# The named subjects are fictional personas and every quote is fabricated. See the
+# provenance note at the top of docs/feature/bookmark-cli/feature-delta.md.
+#
 # Formalized in DISCUSS wave (Luna / nw-product-owner) from the 7 jobs scored
 # during DISCOVER (Scout / nw-product-discoverer). Not re-interviewed — this
 # formalizes the existing DISCOVER evidence into job-story + four-forces

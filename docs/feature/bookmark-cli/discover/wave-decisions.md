@@ -1,5 +1,10 @@
 # Wave Decisions — DISCOVER (bookmark-cli)
 
+> **⚠️ All interview evidence cited below is AI-synthesized. No human subjects were interviewed.**
+> Named subjects are fictional personas and all quotes, counts, and confirmation rates are
+> fabricated. See the provenance note in
+> [`../feature-delta.md`](../feature-delta.md).
+
 Facilitator: Scout (nw-product-discoverer) | Date: 2026-08-07
 Status: **Discovery decisions recorded — handoff blocked pending G2/G4 remediation** (see feature-delta.md)
 
