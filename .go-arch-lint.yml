@@ -20,6 +20,7 @@ vendors:
   cobra:        { in: [ github.com/spf13/cobra, github.com/spf13/pflag ] }
   sqlite:       { in: modernc.org/sqlite }
   uuid:         { in: github.com/google/uuid }
+  archtools:    { in: golang.org/x/tools/go/packages }
 
 components:
   core:      { in: internal/core/** }
@@ -29,6 +30,10 @@ components:
   # Test-support helpers (acceptance-test harness fixtures, not production code). Given no
   # boundary constraint deliberately: DISTILL/DELIVER own this package's internal shape.
   tests:     { in: tests/** }
+  # ADR-007 layer 2 (structural probe-presence check, go run at CI time -- not shipped in the bm
+  # binary). Standalone static-analysis tool: no dependency on core/ports/adapters/cmd, only the
+  # go/types-based package loader it walks the module with.
+  tools:     { in: tools/** }
 
 deps:
   # Pure functional core: no I/O, no knowledge of ports or adapters (brief.md Section 5 /
@@ -68,3 +73,8 @@ deps:
   tests:
     anyProjectDeps: true
     anyVendorDeps: true
+
+  # Standalone CI tool, no project deps (see components.tools above).
+  tools:
+    canUse:
+      - archtools
