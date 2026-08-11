@@ -113,10 +113,27 @@ jobs:
         uses: securego/gosec@master
         with:
           args: "-fmt=sarif -out=gosec-results.sarif ./..."
-      - uses: github/codeql-action/upload-sarif@v3
+      # Advisory, not blocking: this requires "Code scanning" enabled in repo settings (free for
+      # public repos, GitHub Advanced Security for private ones) -- an account/billing decision
+      # outside this workflow's control, not something a YAML change can fix. gosec's own findings
+      # (the SARIF file above) are still preserved as a build artifact regardless of whether this
+      # step succeeds, so nothing is lost while code scanning stays off.
+      - name: Upload SARIF to code scanning (skipped if not enabled for this repo)
+        id: upload_sarif
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: gosec-results.sarif
+      - name: Surface advisory outcome
+        if: always() && steps.upload_sarif.outcome == 'failure'
+        run: echo "::warning::SARIF upload to GitHub code scanning was skipped (feature not enabled for this repo) -- gosec's findings are still available in the gosec-results artifact below."
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gosec-results
+          path: gosec-results.sarif
+          retention-days: 90
 
   sca:
     name: SCA (govulncheck)
