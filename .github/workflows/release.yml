@@ -5,10 +5,17 @@ name: Release
 # branching: triggered by `v*` tags only, cut from `main` (which the commit-stage + fault-
 # injection workflows keep releasable on every push). Does not block per-feature merges to
 # main -- only gates the release publish itself.
+#
+# workflow_dispatch is for on-demand runs of the advisory-only jobs (mutation-testing,
+# performance-benchmarks) without cutting a real release tag -- e.g. to check the performance
+# benchmark numbers land correctly. The actual publish job (goreleaser, and the smoke test that
+# depends on it) is guarded below to only run on a real tag push, so a manual dispatch can never
+# accidentally publish a release.
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch: {}
 
 permissions:
   contents: write # required for the GitHub Release publish + Homebrew tap PR
@@ -84,6 +91,7 @@ jobs:
   goreleaser:
     name: GoReleaser (cross-compile, SBOM, sign, publish, Homebrew bump)
     needs: [mutation-testing]
+    if: github.event_name == 'push' # never publish on a manual workflow_dispatch run
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
