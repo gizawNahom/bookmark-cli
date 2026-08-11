@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"bookmark-cli/internal/core"
+	"github.com/gizawNahom/bookmark-cli/internal/core"
 )
 
 // planSave delegates to the pure core decision (ADR-006 Plan-value pattern).

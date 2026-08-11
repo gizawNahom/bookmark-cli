@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"bookmark-cli/internal/ports"
+	"github.com/gizawNahom/bookmark-cli/internal/ports"
 )
 
 // FileUsageLogAdapter is the "real" telemetry adapter, selected when telemetry_enabled=true.

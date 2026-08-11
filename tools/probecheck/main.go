@@ -17,7 +17,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const portsPkgPath = "bookmark-cli/internal/ports"
+const portsPkgPath = "github.com/gizawNahom/bookmark-cli/internal/ports"
 
 func main() {
 	patterns := os.Args[1:]

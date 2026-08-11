@@ -15,7 +15,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"bookmark-cli/internal/core"
+	"github.com/gizawNahom/bookmark-cli/internal/core"
 )
 
 // Store implements ports.BookmarkReader, ports.BookmarkWriter, and ports.Prober.

@@ -21,11 +21,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"bookmark-cli/internal/adapters/backup"
-	"bookmark-cli/internal/adapters/sqlitestore"
-	"bookmark-cli/internal/adapters/usagelog"
-	"bookmark-cli/internal/core"
-	"bookmark-cli/internal/ports"
+	"github.com/gizawNahom/bookmark-cli/internal/adapters/backup"
+	"github.com/gizawNahom/bookmark-cli/internal/adapters/sqlitestore"
+	"github.com/gizawNahom/bookmark-cli/internal/adapters/usagelog"
+	"github.com/gizawNahom/bookmark-cli/internal/core"
+	"github.com/gizawNahom/bookmark-cli/internal/ports"
 )
 
 // dataDir resolves ${data_dir}: BM_DATA_DIR env var (used by acceptance tests for isolation) or

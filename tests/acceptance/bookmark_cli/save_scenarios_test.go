@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	statedelta "bookmark-cli/tests/common"
+	statedelta "github.com/gizawNahom/bookmark-cli/tests/common"
 )
 
 // increasedBy is a small local Predicate constructor (state_delta.go ships the general-purpose

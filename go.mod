@@ -1,4 +1,4 @@
-module bookmark-cli
+module github.com/gizawNahom/bookmark-cli
 
 go 1.25.8
 

@@ -2,7 +2,7 @@
 // driven adapter implements one of these plus Prober per ADR-007 ("wire then probe then use").
 package ports
 
-import "bookmark-cli/internal/core"
+import "github.com/gizawNahom/bookmark-cli/internal/core"
 
 // Prober is implemented by every driven adapter (ADR-007 Earned Trust). Probe() is run at
 // composition-root startup; a failure aborts the operation with health.startup.refused rather
