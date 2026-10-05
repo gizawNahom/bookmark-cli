@@ -35,18 +35,18 @@ const probeFileName = ".probe"
 // a throwaway snapshot succeeds, (3) rotation correctly deletes the oldest file even under
 // concurrent access (brief.md Section 11).
 func (a *Adapter) Probe() error {
-	if err := os.MkdirAll(a.BackupDir, 0o755); err != nil {
+	if err := os.MkdirAll(a.BackupDir, 0o700); err != nil {
 		return fmt.Errorf("creating backup directory: %w", err)
 	}
 
 	probePath := filepath.Join(a.BackupDir, probeFileName)
 	content := []byte("backup-adapter-probe")
-	if err := os.WriteFile(probePath, content, 0o644); err != nil {
+	if err := os.WriteFile(probePath, content, 0o600); err != nil {
 		return fmt.Errorf("backup directory not writable: %w", err)
 	}
 	defer os.Remove(probePath)
 
-	readBack, err := os.ReadFile(probePath)
+	readBack, err := os.ReadFile(filepath.Clean(probePath))
 	if err != nil {
 		return fmt.Errorf("backup directory probe read-back: %w", err)
 	}
@@ -65,11 +65,11 @@ func checksum(b []byte) string {
 // the oldest snapshot beyond Retain. Must fail safe: never partially write a corrupt snapshot and
 // call it success, and never touch the primary DB file except to read it.
 func (a *Adapter) Snapshot(dbPath string) error {
-	if err := os.MkdirAll(a.BackupDir, 0o755); err != nil {
+	if err := os.MkdirAll(a.BackupDir, 0o700); err != nil {
 		return fmt.Errorf("creating backup directory: %w", err)
 	}
 
-	src, err := os.Open(dbPath)
+	src, err := os.Open(filepath.Clean(dbPath))
 	if err != nil {
 		return fmt.Errorf("opening source database: %w", err)
 	}
@@ -82,7 +82,7 @@ func (a *Adapter) Snapshot(dbPath string) error {
 		return err
 	}
 	if err := os.Rename(tmpPath, finalPath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("finalizing snapshot: %w", err)
 	}
 
@@ -93,23 +93,23 @@ func (a *Adapter) Snapshot(dbPath string) error {
 // under its final name via os.Rename in Snapshot, so a crash mid-copy never leaves a partial
 // "bookmarks-<timestamp>.db" file behind.
 func copyToTemp(tmpPath string, src io.Reader) error {
-	dst, err := os.Create(tmpPath)
+	dst, err := os.Create(filepath.Clean(tmpPath))
 	if err != nil {
 		return fmt.Errorf("creating snapshot temp file: %w", err)
 	}
 
 	if _, err := io.Copy(dst, src); err != nil {
-		dst.Close()
-		os.Remove(tmpPath)
+		_ = dst.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("copying snapshot: %w", err)
 	}
 	if err := dst.Sync(); err != nil {
-		dst.Close()
-		os.Remove(tmpPath)
+		_ = dst.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("syncing snapshot: %w", err)
 	}
 	if err := dst.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("closing snapshot: %w", err)
 	}
 	return nil

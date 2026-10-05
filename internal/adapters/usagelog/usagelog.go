@@ -28,12 +28,12 @@ func NewFileUsageLogAdapter(logPath string) *FileUsageLogAdapter {
 // project's generic 3-layer enforcement tooling -- no new tooling scope required).
 func (a *FileUsageLogAdapter) Probe() error {
 	dir := filepath.Dir(a.LogPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("creating usage log directory: %w", err)
 	}
 
 	probePath := filepath.Join(dir, ".usage-log-probe")
-	if err := os.WriteFile(probePath, []byte("probe"), 0o644); err != nil {
+	if err := os.WriteFile(probePath, []byte("probe"), 0o600); err != nil {
 		return fmt.Errorf("usage log directory not writable: %w", err)
 	}
 	defer os.Remove(probePath)
@@ -54,11 +54,11 @@ type usageLogEntry struct {
 // only -- never URL or tag content) to LogPath as a JSONL line.
 func (a *FileUsageLogAdapter) Record(event ports.UsageEvent) error {
 	dir := filepath.Dir(a.LogPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("creating usage log directory: %w", err)
 	}
 
-	f, err := os.OpenFile(a.LogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(a.LogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("opening usage log: %w", err)
 	}
