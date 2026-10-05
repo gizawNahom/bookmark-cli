@@ -2,6 +2,11 @@
 
 Save, find, and share technical reference links without leaving your terminal.
 
+> **Practice project.** `bm` was built to practise the nWave methodology end-to-end: discovery,
+> requirements, design, DevOps, acceptance-test design, and outside-in TDD delivery. The CLI works,
+> but the main artefact is the design record in [`docs/`](docs/), including the decision to build
+> despite a failed viability gate.
+
 `bm` is a local-first CLI for people who live in a shell: capture a link mid-incident with one
 command, get it back by keyword or tag seconds later, and hand it to a teammate in a form they can
 use without installing anything. No account, no server, no network calls — a single static binary
