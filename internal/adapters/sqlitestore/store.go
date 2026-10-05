@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS bookmarks (
 // open creates the data directory if needed, opens a WAL-mode connection with a busy_timeout
 // guard (~5000ms, ADR-004), and ensures the schema exists.
 func (s *Store) open() (*sql.DB, error) {
-	if err := os.MkdirAll(filepath.Dir(s.Path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
 	}
 
@@ -52,7 +52,7 @@ func (s *Store) open() (*sql.DB, error) {
 	}
 
 	if _, err := db.Exec(schema); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("initializing schema: %w", err)
 	}
 
